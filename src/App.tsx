@@ -129,7 +129,7 @@ export default function App() {
     } catch (err: any) {
       console.error('Falha ao autenticar com Google: ', err);
       setAuthError(
-        'O navegador bloqueou ou restringiu o pop-up ou cookies devido ao ambiente integrado (iframe) do AI Studio. Clique no botão de "Acesso Rápido" abaixo para usar instantaneamente, ou abra em uma Nova Guia para sintonizar a sua Conta do Google real.'
+        'O navegador bloqueou ou restringiu o pop-up ou cookies devido ao ambiente integrado (iframe) do AI Studio. Por favor, clique em "Abrir Aplicativo em Nova Aba" para usar a sua conta do Gmail real com segurança.'
       );
     }
   };
@@ -571,55 +571,62 @@ export default function App() {
                 </div>
               </form>
             ) : loginTab === 'admin' ? (
-              /* ADMINISTRATOR AUTH BLOCK */
+              /* ADMINISTRATOR AUTH BLOCK WITH ONLY GMAIL AND IFRAME WARNINGS */
               <div className="space-y-4">
                 <p className="text-[11px] text-slate-400 leading-relaxed text-center">
-                  Espaço exclusivo para gestores da rede. Monitore e configure todas as TVs, mídias corporativas e campanhas globais.
+                  Espaço exclusivo para gestores da rede. Faça login com o seu e-mail do Gmail para gerenciar todos os monitores e campanhas.
                 </p>
 
-                <div className="space-y-2.5 py-1">
-                  {/* Anonymous/Sandbox Bypass Option */}
-                  <button
-                    onClick={handleAnonymousLogin}
-                    id="btn-anonymous-login"
-                    type="button"
-                    className="w-full inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-550 border border-indigo-500/20 text-white text-xs font-bold rounded-xl shadow-md transition cursor-pointer"
-                  >
-                    <ShieldCheck className="w-4 h-4 shrink-0 text-cyan-300" />
-                    <span>Acesso Rápido Administrador</span>
-                  </button>
-
-                  <div className="flex items-center justify-center my-1 select-none">
-                    <span className="text-[9px] font-extrabold text-slate-500 uppercase tracking-widest">— OU SE PREFERIR —</span>
-                  </div>
-
-                  {/* Google Login */}
-                  <button
-                    onClick={handleGoogleLogin}
-                    id="btn-google-login"
-                    type="button"
-                    className="w-full inline-flex items-center justify-center gap-2.5 px-6 py-2.5 border border-white/10 hover:border-white/20 bg-slate-900/60 hover:bg-slate-900/90 text-slate-300 hover:text-white text-xs font-bold rounded-xl shadow-sm transition cursor-pointer"
-                  >
-                    <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
-                      <path
-                        fill="#4285F4"
-                        d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.92h6.61c-.29 1.5-.14 3.06-2.91 4.19v3.47h4.7c2.75-2.53 4.34-6.26 4.34-10.27l-.005-.72z"
-                      />
-                      <path
-                        fill="#34A853"
-                        d="M12 24c3.24 0 5.97-1.08 7.96-2.91l-4.7-3.47c-1.3.87-2.97 1.39-4.7 1.39-3.62 0-6.68-2.45-7.77-5.74H.32v3.58C2.3 20.83 6.88 24 12 24z"
-                      />
-                      <path
-                        fill="#FBBC05"
-                        d="M4.23 13.27a7.185 7.185 0 0 1 0-4.54V5.15H.32a11.97 11.97 0 0 0 0 10.7l3.91-3.58z"
-                      />
-                      <path
-                        fill="#EA4335"
-                        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.43-3.43C17.96 1.15 15.24 0 12 0 6.88 0 2.3 3.17.32 7.15l3.91 3.58c1.09-3.29 4.15-5.74 7.77-5.74z"
-                      />
-                    </svg>
-                    Acessar com Conta Google
-                  </button>
+                <div className="space-y-3 py-1">
+                  {typeof window !== 'undefined' && window.self !== window.top ? (
+                    /* Display beautiful explicit notice with high-contrast Action if inside AI Studio Sandbox iframe */
+                    <div className="p-4 bg-amber-500/10 border border-amber-500/20 text-slate-200 rounded-xl text-center space-y-3.5 shadow-md animate-fade-in">
+                      <div className="flex items-center justify-center gap-1.5 text-amber-400 font-extrabold uppercase text-[10px] tracking-widest">
+                        <span>⚠️ Restrição de Login no iFrame</span>
+                      </div>
+                      <p className="leading-relaxed text-[11px] text-slate-300">
+                        O Google restringe a autenticação via OAuth/Gmail dentro de iFrames do AI Studio por segurança.
+                        Por favor, abra o aplicativo em uma **Nova Aba** para fazer login no Gmail normalmente.
+                      </p>
+                      <a
+                        href={typeof window !== 'undefined' ? window.location.href : '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-550 border border-indigo-500/20 text-white text-xs font-bold rounded-xl shadow-md transition cursor-pointer font-sans"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        Abrir Aplicativo em Nova Aba
+                      </a>
+                    </div>
+                  ) : (
+                    /* Normal Tab flow: display native Google Sign In directly */
+                    <button
+                      onClick={handleGoogleLogin}
+                      id="btn-google-login"
+                      type="button"
+                      className="w-full inline-flex items-center justify-center gap-2.5 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-550 border border-indigo-500/20 text-white text-xs font-bold rounded-xl shadow-md transition cursor-pointer"
+                    >
+                      <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
+                        <path
+                          fill="#4285F4"
+                          d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.92h6.61c-.29 1.5-.14 3.06-2.91 4.19v3.47h4.7c2.75-2.53 4.34-6.26 4.34-10.27l-.005-.72z"
+                        />
+                        <path
+                          fill="#34A853"
+                          d="M12 24c3.24 0 5.97-1.08 7.96-2.91l-4.7-3.47c-1.3.87-2.97 1.39-4.7 1.39-3.62 0-6.68-2.45-7.77-5.74H.32v3.58C2.3 20.83 6.88 24 12 24z"
+                        />
+                        <path
+                          fill="#FBBC05"
+                          d="M4.23 13.27a7.185 7.185 0 0 1 0-4.54V5.15H.32a11.97 11.97 0 0 0 0 10.7l3.91-3.58z"
+                        />
+                        <path
+                          fill="#EA4335"
+                          d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.43-3.43C17.96 1.15 15.24 0 12 0 6.88 0 2.3 3.17.32 7.15l3.91 3.58c1.09-3.29 4.15-5.74 7.77-5.74z"
+                        />
+                      </svg>
+                      Acessar com Conta Gmail
+                    </button>
+                  )}
                 </div>
 
                 {/* Google login sandboxing exception notice */}
@@ -637,7 +644,7 @@ export default function App() {
                         rel="noopener noreferrer"
                         className="underline text-indigo-300 hover:text-indigo-200 flex items-center gap-1"
                       >
-                        Abrir em Nova Aba <ExternalLink className="w-3 h-3 text-indigo-400" />
+                        Abrir em Nova Aba <ExternalLink className="w-3" />
                       </a>
                     </div>
                   </div>
