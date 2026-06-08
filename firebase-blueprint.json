@@ -1,0 +1,193 @@
+{
+  "entities": {
+    "Asset": {
+      "title": "Asset",
+      "description": "Represents a media asset like a custom text slide, image URL, video URL, or webpage embedding",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Display name of the asset"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["image", "video", "web", "text"],
+          "description": "Type of media asset"
+        },
+        "url": {
+          "type": "string",
+          "description": "Direct link or external embedding URL"
+        },
+        "content": {
+          "type": "string",
+          "description": "For text media: announcement body or bulletin message"
+        },
+        "config": {
+          "type": "object",
+          "description": "Custom configuration including layout colors and alignments"
+        },
+        "duration": {
+          "type": "integer",
+          "description": "Default slide display duration in seconds"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "The administrative creator of this asset"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["name", "type", "url", "ownerId"]
+    },
+    "Playlist": {
+      "title": "Playlist",
+      "description": "An ordered sequence of assets configured to run sequentially on TV Player",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Display title of the playlist"
+        },
+        "items": {
+          "type": "array",
+          "description": "Array of assets snapshots including sequence duration settings"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "The administrative creator of this playlist"
+        },
+        "clientId": {
+          "type": "string",
+          "description": "The registered Client document ID"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["name", "items", "ownerId"]
+    },
+    "Screen": {
+      "title": "Screen",
+      "description": "Represents a Smart TV player display and its pairing registration state",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Human-friendly screen placement title"
+        },
+        "pairingCode": {
+          "type": "string",
+          "description": "Short code used by browser screens to request a link"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["online", "offline"]
+        },
+        "lastActive": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server Timestamp recording the last player heartbeat"
+        },
+        "contentType": {
+          "type": "string",
+          "enum": ["playlist", "asset", "idle"]
+        },
+        "contentId": {
+          "type": "string",
+          "description": "The specific playlist id or asset id assigned to run"
+        },
+        "pairedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp indicating when the screen was paired"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "User instance belonging. Empty string prior to pairing link"
+        },
+        "clientId": {
+          "type": "string",
+          "description": "A reference to the registered Client business establishment document ID"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["pairingCode", "status", "contentType", "ownerId"]
+    },
+    "Client": {
+      "title": "Client",
+      "description": "Represents a registered client business establishment",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "establishmentName": { "type": "string" },
+        "phone": { "type": "string" },
+        "whatsapp": { "type": "string" },
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" },
+        "city": { "type": "string" },
+        "state": { "type": "string" },
+        "cep": { "type": "string" },
+        "planId": { "type": "string", "description": "References the acquired plan ID (e.g. plan_1)" },
+        "ownerId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["establishmentName", "phone", "username", "email", "ownerId"]
+    },
+    "Plan": {
+      "title": "Plan",
+      "description": "Represents a tiered pricing plan from 1 to 7 with custom max display configurations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "price": { "type": "number", "description": "The custom price set by the admin, or null/empty if not yet determined" },
+        "maxScreens": { "type": "integer", "description": "The maximum number of screens allowed on this plan level" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "maxScreens"]
+    }
+  },
+  "firestore": {
+    "/assets/{assetId}": {
+      "schema": "Asset",
+      "description": "Stores user uploaded or customized signage media assets"
+    },
+    "/playlists/{playlistId}": {
+      "schema": "Playlist",
+      "description": "Stores sequences of media playlist timings"
+    },
+    "/screens/{screenId}": {
+      "schema": "Screen",
+      "description": "Stores TV players and browser display pairings"
+    },
+    "/clients/{clientId}": {
+      "schema": "Client",
+      "description": "Stores registered clients under administration control"
+    },
+    "/plans/{planId}": {
+      "schema": "Plan",
+      "description": "Stores client subscription tiers and standard pricing limits"
+    }
+  }
+}

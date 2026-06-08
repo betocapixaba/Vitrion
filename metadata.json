@@ -1,0 +1,6 @@
+{
+  "name": "Vitrion Smart Display",
+  "description": "Reprodutor de TV inteligente e painel gerenciador de mídias, playlists e pareamento remoto de telas em tempo real.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
