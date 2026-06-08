@@ -416,6 +416,25 @@ export default function App() {
         <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/5 rounded-full blur-3xl" />
         <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-600/5 rounded-full blur-3xl" />
 
+        {/* Floating Admin Gmail button on the right side of the page */}
+        <div className="absolute top-4 right-4 z-40 sm:top-6 sm:right-6 lg:top-8 lg:right-8">
+          <button
+            onClick={() => {
+              setLoginTab(loginTab === 'admin' ? 'client' : 'admin');
+              setClientLoginError('');
+            }}
+            type="button"
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-[10px] font-extrabold uppercase tracking-wider backdrop-blur-md transition-all duration-300 shadow-lg border cursor-pointer ${
+              loginTab === 'admin'
+                ? 'bg-indigo-600 border-indigo-550 text-white shadow-[0_0_15px_rgba(99,102,241,0.3)] scale-[1.03]'
+                : 'bg-slate-900/80 border-white/5 text-slate-350 hover:text-white hover:border-white/15'
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-cyan-300" />
+            <span>Acesso Administrador (Gmail)</span>
+          </button>
+        </div>
+
         <div className="w-full max-w-md bg-slate-900 border border-white/5 rounded-2xl shadow-2xl overflow-hidden animate-fade-in relative z-10 text-white">
           
           {/* Header banner */}
@@ -437,42 +456,28 @@ export default function App() {
                   setLoginTab('client');
                   setClientLoginError('');
                 }}
-                className={`flex-1 py-1.5 text-center text-[11px] font-bold rounded-lg transition duration-200 cursor-pointer flex items-center justify-center gap-1 ${
+                className={`flex-1 py-1.5 text-center text-[11px] font-bold rounded-lg transition duration-200 cursor-pointer flex items-center justify-center gap-1.5 ${
                   loginTab === 'client'
                     ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-slate-200'
+                    : 'text-slate-400 hover:text-slate-205'
                 }`}
               >
-                <UserIcon className="w-3 h-3" />
-                Cliente
-              </button>
-              <button
-                onClick={() => {
-                  setLoginTab('admin');
-                  setClientLoginError('');
-                }}
-                className={`flex-1 py-1.5 text-center text-[11px] font-bold rounded-lg transition duration-200 cursor-pointer flex items-center justify-center gap-1 ${
-                  loginTab === 'admin'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <ShieldCheck className="w-3 h-3" />
-                Admin
+                <UserIcon className="w-3.5 h-3.5" />
+                Painel do Cliente
               </button>
               <button
                 onClick={() => {
                   setLoginTab('pair');
                   setClientLoginError('');
                 }}
-                className={`flex-1 py-1.5 text-center text-[11px] font-bold rounded-lg transition duration-200 cursor-pointer flex items-center justify-center gap-1 ${
+                className={`flex-1 py-1.5 text-center text-[11px] font-bold rounded-lg transition duration-200 cursor-pointer flex items-center justify-center gap-1.5 ${
                   loginTab === 'pair'
                     ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-slate-200'
+                    : 'text-slate-400 hover:text-slate-205'
                 }`}
               >
-                <Tv className="w-3 h-3" />
-                Sincronizar
+                <Tv className="w-3.5 h-3.5" />
+                Sincronizar Smart TV
               </button>
             </div>
           </div>
@@ -649,6 +654,20 @@ export default function App() {
                     </div>
                   </div>
                 )}
+
+                {/* Back to Client Login helper footer link */}
+                <div className="pt-3.5 text-center select-none border-t border-white/5 animate-fade-in">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginTab('client');
+                      setClientLoginError('');
+                    }}
+                    className="text-[10.5px] font-extrabold uppercase tracking-widest text-slate-400 hover:text-cyan-400 cursor-pointer transition-colors duration-150"
+                  >
+                    &larr; Voltar para Painel do Cliente
+                  </button>
+                </div>
               </div>
             ) : (
               /* QUICK TV PAIRING/SYNC FORM */
