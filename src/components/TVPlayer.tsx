@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { doc, onSnapshot, updateDoc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Screen, Playlist, Asset, PlaylistItem } from '../types';
+import { VitrionLogo } from './VitrionLogo';
 import { 
   Tv, Sparkles, RefreshCw, Layers, Clock, ShieldCheck, 
   Expand, Maximize, CheckCircle2, AlertCircle, Play, Film, AlertTriangle, X,
@@ -420,13 +421,9 @@ export default function TVPlayer() {
 
         <header className="flex items-center justify-between border-b border-white/5 pb-4 shrink-0 z-10">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-              <Tv className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <span className="text-sm font-bold tracking-tight">VITRION PLAYER</span>
-              <p className="text-[9px] text-slate-500 uppercase tracking-widest font-bold">Smart TV Signage Node</p>
-            </div>
+            <VitrionLogo variant="badge" theme="dark" size="xs" />
+            <div className="h-4 w-px bg-slate-800 mx-1 hidden sm:block"></div>
+            <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold hidden sm:inline">Smart TV Signage Node</span>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/15 px-2 py-0.5 rounded font-bold font-mono uppercase tracking-wider">

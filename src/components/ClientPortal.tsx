@@ -17,7 +17,8 @@ import { Client, Screen, Asset, Playlist, PlaylistItem } from '../types';
 import { 
   Tv, Layers, LogOut, CheckCircle2, AlertCircle, Plus, Trash2, 
   RefreshCw, Copy, ExternalLink, Image as ImageIcon, MapPin, 
-  Check, Play, X, Sliders, Info, ShoppingBag, ListPlus, ArrowUp, ArrowDown, FolderHeart, Save, Sparkles, Film
+  Check, Play, X, Sliders, Info, ShoppingBag, ListPlus, ArrowUp, ArrowDown, FolderHeart, Save, Sparkles, Film,
+  Monitor, Loader2
 } from 'lucide-react';
 
 // Error monitoring based on firebase-integration skill
@@ -86,6 +87,10 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
   // New Display Form States
   const [newDisplayName, setNewDisplayName] = useState('');
   const [isAddScreenOpen, setIsAddScreenOpen] = useState(false);
+  const [addDisplayTab, setAddDisplayTab] = useState<'quick' | 'generate'>('quick');
+  const [quickPairCode, setQuickPairCode] = useState('');
+  const [quickDisplayName, setQuickDisplayName] = useState('');
+  const [isSubmittingQuickPair, setIsSubmittingQuickPair] = useState(false);
 
   // New Playlist Form States
   const [isAddPlaylistOpen, setIsAddPlaylistOpen] = useState(false);
@@ -310,6 +315,65 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
     } catch (err) {
       console.error(err);
       setErrorMsg('Falha ao adicionar novo display. Erro de permissão do Firestore.');
+    }
+  };
+
+  // Sintonizar Smart TV de forma rápida pelo código gerado na TV
+  const handleQuickPairTV = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    const code = quickPairCode.trim().toUpperCase();
+    if (code.length !== 4) {
+      setErrorMsg('O código de pareamento deve conter exatamente 4 caracteres.');
+      return;
+    }
+
+    if (!quickDisplayName.trim()) {
+      setErrorMsg('Por favor, defina um nome amigável para este monitor.');
+      return;
+    }
+
+    // Capacity restriction based on plan limit
+    const maxScreens = clientPlan ? clientPlan.maxScreens : 1;
+    if (screens.length >= maxScreens) {
+      setErrorMsg(`Limite de displays atingido! O seu plano contratado permite no máximo ${maxScreens} ${maxScreens === 1 ? 'TV' : 'TVs'}. Remova uma das TVs existentes ou peça aumento de cota.`);
+      return;
+    }
+
+    setIsSubmittingQuickPair(true);
+
+    try {
+      const screenRef = doc(db, 'screens', code);
+      const screenSnap = await getDocs(query(collection(db, 'screens'), where('id', '==', code)));
+      
+      if (screenSnap.empty) {
+        setErrorMsg('Estação de TV não encontrada! Verifique o código exibido no seu monitor ou tente recarregar o TV Player.');
+        setIsSubmittingQuickPair(false);
+        return;
+      }
+
+      await updateDoc(screenRef, {
+        name: quickDisplayName.trim(),
+        ownerId: currentClient.ownerId || 'vitrion-sandbox-admin',
+        clientId: currentClient.id,
+        pairedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        status: 'online'
+      });
+
+      setSuccessMsg(`Excelente! O monitor "${quickDisplayName.trim()}" foi sincronizado com sucesso!`);
+      setQuickPairCode('');
+      setQuickDisplayName('');
+      setIsAddScreenOpen(false);
+      
+      setTimeout(() => setSuccessMsg(''), 5000);
+    } catch (err: any) {
+      console.error('Erro ao sintonizar via Conexão Rápida:', err);
+      setErrorMsg('Falha ao sincronizar o monitor com o Firestore: ' + err.message);
+    } finally {
+      setIsSubmittingQuickPair(false);
     }
   };
 
@@ -824,30 +888,126 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
 
             {/* Quick Add Display Form inline dropdown */}
             {isAddScreenOpen && (
-              <form onSubmit={handleAddDisplay} className="p-5 bg-slate-950 border border-slate-800 rounded-xl space-y-4 animate-slide-up">
-                <div>
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-300 mb-1">Registrar Nova TV</h3>
-                  <p className="text-[11px] text-slate-400 leading-relaxed mb-3">
-                    Ao cadastrar o monitor, o portal gerará o <strong>código de 4 dígitos</strong> correspondente. Escreva o nome do local onde a TV ficará exposta:
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ex: TV do Caixa, Menu Board Direita"
-                    value={newDisplayName}
-                    onChange={(e) => setNewDisplayName(e.target.value)}
-                    className="flex-1 min-w-0 bg-slate-900 border border-slate-800 text-white text-xs px-3.5 py-2.5 rounded-lg focus:outline-hidden focus:border-indigo-500"
-                  />
+              <div className="p-5 bg-slate-950 border border-slate-850 rounded-xl space-y-4 animate-slide-up">
+                
+                {/* Internal Tab Selector */}
+                <div className="flex bg-slate-900 p-1 rounded-lg border border-white/5 gap-1 select-none">
                   <button
-                    type="submit"
-                    className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition shrink-0 cursor-pointer"
+                    type="button"
+                    onClick={() => setAddDisplayTab('quick')}
+                    className={`flex-1 py-1.5 text-center text-[10.5px] font-bold rounded-md transition duration-205 cursor-pointer flex items-center justify-center gap-1.5 ${
+                      addDisplayTab === 'quick'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'text-slate-450 hover:text-slate-200'
+                    }`}
                   >
-                    Gerar Código
+                    <Tv className="w-3.5 h-3.5" />
+                    Conexão Rápida (Parear TV)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAddDisplayTab('generate')}
+                    className={`flex-1 py-1.5 text-center text-[10.5px] font-bold rounded-md transition duration-205 cursor-pointer flex items-center justify-center gap-1.5 ${
+                      addDisplayTab === 'generate'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'text-slate-450 hover:text-slate-200'
+                    }`}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Gerar Novo Código
                   </button>
                 </div>
-              </form>
+
+                {addDisplayTab === 'quick' ? (
+                  /* TAB 1: QUICK PAIR TV BY CODE */
+                  <form onSubmit={handleQuickPairTV} className="space-y-4">
+                    <div>
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-300 mb-1">Sintonizar TV Instantaneamente</h3>
+                      <p className="text-[11.5px] text-slate-400 leading-relaxed">
+                        Sua Smart TV está exibindo o código de pareamento de 4 letras? Digite o código e defina um nome abaixo para ativá-la nesta conta em milissegundos.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">
+                          Código de 4 Letras (ex: ABCD)
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={quickPairCode}
+                          onChange={(e) => {
+                            const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                            setQuickPairCode(val.slice(0, 4));
+                          }}
+                          placeholder="DIGITE"
+                          className="w-full bg-slate-900 border border-slate-800 text-cyan-400 text-center text-sm font-black tracking-widest px-3 py-2.5 rounded-lg focus:outline-hidden focus:border-cyan-500 uppercase font-mono"
+                          maxLength={4}
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-slate-455 uppercase tracking-wider block">
+                          Nome do Monitor
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Ex: TV Recepção, Vitrina"
+                          value={quickDisplayName}
+                          onChange={(e) => setQuickDisplayName(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-800 text-white text-xs px-3.5 py-2.5 rounded-lg focus:outline-hidden focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isSubmittingQuickPair}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-60 text-white text-xs font-bold rounded-lg shadow-md transition duration-200 cursor-pointer"
+                    >
+                      {isSubmittingQuickPair ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin text-white" />
+                          <span>Conectando via Nuvem...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Monitor className="w-4 h-4" />
+                          <span>Sintonizar & Conectar Smart TV</span>
+                        </>
+                      )}
+                    </button>
+                  </form>
+                ) : (
+                  /* TAB 2: GENERATE NEW CODE (PREVIOUS FUNCTIONALITY) */
+                  <form onSubmit={handleAddDisplay} className="space-y-4">
+                    <div>
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-300 mb-1">Registrar Nova TV</h3>
+                      <p className="text-[11px] text-slate-400 leading-relaxed mb-3">
+                        Ao cadastrar o monitor, o portal gerará o <strong>código de 4 dígitos</strong> correspondente. Escreva o nome do local onde a TV ficará exposta:
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ex: TV do Caixa, Menu Board Direita"
+                        value={newDisplayName}
+                        onChange={(e) => setNewDisplayName(e.target.value)}
+                        className="flex-1 min-w-0 bg-slate-900 border border-slate-800 text-white text-xs px-3.5 py-2.5 rounded-lg focus:outline-hidden focus:border-indigo-500"
+                      />
+                      <button
+                        type="submit"
+                        className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition shrink-0 cursor-pointer"
+                      >
+                        Gerar Código
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
             )}
 
             {/* Display list view */}

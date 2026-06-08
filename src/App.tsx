@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut, User } from 'firebase/auth';
-import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot, doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from './lib/firebase';
 import MediaManager from './components/MediaManager';
 import PlaylistManager from './components/PlaylistManager';
@@ -14,6 +14,7 @@ import ClientRegistry from './components/ClientRegistry';
 import ClientPortal from './components/ClientPortal';
 import PlanManager from './components/PlanManager';
 import ClientSelfRegistration from './components/ClientSelfRegistration';
+import { VitrionLogo } from './components/VitrionLogo';
 import { Client } from './types';
 import { 
   Tv, Layers, LogOut, ShieldCheck, HelpCircle, Eye,
@@ -85,7 +86,14 @@ export default function App() {
     return null;
   });
 
-  const [loginTab, setLoginTab] = useState<'client' | 'admin'>('client');
+  const [loginTab, setLoginTab] = useState<'client' | 'admin' | 'pair'>('client');
+  const [pairingCodeParam, setPairingCodeParam] = useState('');
+  const [pairingAction, setPairingAction] = useState<'mirror' | 'pair_store'>('mirror');
+  const [pairClientUser, setPairClientUser] = useState('');
+  const [pairClientPass, setPairClientPass] = useState('');
+  const [pairSuccess, setPairSuccess] = useState('');
+  const [pairError, setPairError] = useState('');
+  const [pairIsSubmitting, setPairIsSubmitting] = useState(false);
   const [clientUsername, setClientUsername] = useState('');
   const [clientPassword, setClientPassword] = useState('');
   const [showClientPassword, setShowClientPassword] = useState(false);
@@ -220,6 +228,113 @@ export default function App() {
     }
   };
 
+  // Fast synchronization submit handler
+  const handleTVPairingSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPairError('');
+    setPairSuccess('');
+    
+    const code = pairingCodeParam.trim().toUpperCase();
+    if (code.length !== 4) {
+      setPairError('O código de pareamento deve conter exatamente 4 caracteres.');
+      return;
+    }
+    
+    setPairIsSubmitting(true);
+    
+    try {
+      // 1. Verify existence of TV screen in FireStore
+      const screenRef = doc(db, 'screens', code);
+      const screenSnap = await getDoc(screenRef);
+      
+      if (!screenSnap.exists()) {
+        setPairError('Estação de TV não encontrada! Certifique-se de que a Smart TV está aberta no Modo Player e exibe o código correto de 4 letras.');
+        setPairIsSubmitting(false);
+        return;
+      }
+      
+      if (pairingAction === 'mirror') {
+        // Option A: Just mirror screen in this browser right now!
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('op_player_screen_id', code);
+        }
+        setPairSuccess('Sintonização concluída! Abrindo reprodutor nesta tela...');
+        setTimeout(() => {
+          setAppMode('player');
+          setLoginTab('client'); // default back
+          setPairingCodeParam('');
+          setPairSuccess('');
+          setPairIsSubmitting(false);
+        }, 1500);
+      } else {
+        // Option B: Pair TV with an establishment
+        if (!pairClientUser.trim() || !pairClientPass.trim()) {
+          setPairError('Por favor, informe credenciais válidas do estabelecimento.');
+          setPairIsSubmitting(false);
+          return;
+        }
+        
+        // Find matched client store
+        const q = query(
+          collection(db, 'clients'),
+          where('username', '==', pairClientUser.trim())
+        );
+        const querySnap = await getDocs(q);
+        
+        if (querySnap.empty) {
+          setPairError('Estabelecimento não encontrado com este usuário.');
+          setPairIsSubmitting(false);
+          return;
+        }
+        
+        let targetClient: Client | null = null;
+        querySnap.forEach((docSnap) => {
+          const data = docSnap.data() as Client;
+          if (data.password === pairClientPass) {
+            targetClient = { id: docSnap.id, ...data };
+          }
+        });
+        
+        if (!targetClient) {
+          setPairError('Senha incorreta para o estabelecimento selecionado.');
+          setPairIsSubmitting(false);
+          return;
+        }
+        
+        // Success: update screen to pair with this establishment!
+        await updateDoc(screenRef, {
+          name: `TV - Sincronizada via Conexão Rápida`,
+          ownerId: 'vitrion-sandbox-admin', // default admin manager or self-assigned
+          clientId: (targetClient as Client).id,
+          pairedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          status: 'online'
+        });
+        
+        setPairSuccess(`Parabéns! TV sintonizada com sucesso em ${(targetClient as Client).establishmentName}. Redirecionando...`);
+        
+        // Log them into ClientPortal automatically for convenience!
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('vitrion_logged_client', JSON.stringify(targetClient));
+        }
+        
+        setTimeout(() => {
+          setLoggedClient(targetClient);
+          setPairingCodeParam('');
+          setPairClientUser('');
+          setPairClientPass('');
+          setPairSuccess('');
+          setPairIsSubmitting(false);
+        }, 1800);
+      }
+      
+    } catch (err: any) {
+      console.error('Erro na sintonização rápida:', err);
+      setPairError('Falha de segurança ou conexão com o Firestore: ' + err.message);
+      setPairIsSubmitting(false);
+    }
+  };
+
   // 3-second immersive startup screen with high-fidelity brand logomark and tagline as requested
   if (showSplash) {
     return (
@@ -234,78 +349,8 @@ export default function App() {
         {/* Animated Brand Content */}
         <div className="relative z-10 text-center flex flex-col items-center max-w-lg space-y-7 animate-fade-in">
           
-          {/* Stunning SVG reproduction of Vitrion glowing display icon/logo */}
-          <div className="relative w-40 h-40 filter drop-shadow-[0_0_25px_rgba(99,102,241,0.3)] animate-pulse" style={{ animationDuration: '2.5s' }}>
-            <svg viewBox="0 0 500 500" className="w-full h-full" fill="none" xmlns="http://www.w3.org/2000/svg">
-              {/* Left Dark Structural Path */}
-              <path 
-                d="M170 120 L240 330 L320 330 L195 120 Z" 
-                fill="#1e293b" 
-                stroke="#334155" 
-                strokeWidth="6"
-                strokeLinejoin="round"
-              />
-              <path 
-                d="M170 120 L240 330 L275 330 L210 120 Z" 
-                fill="#0f172a" 
-                opacity="0.85"
-              />
-              
-              {/* Glowing Right Panel Screen Frame */}
-              <g filter="url(#glow-filter-splash)">
-                <rect 
-                  x="260" 
-                  y="120" 
-                  width="110" 
-                  height="210" 
-                  rx="16" 
-                  transform="skewX(-16) rotate(-5 260 120)" 
-                  fill="url(#screen-gradient-splash)" 
-                  stroke="url(#border-gradient-splash)"
-                  strokeWidth="5"
-                  opacity="0.95"
-                />
-                {/* Simulated highlight line inside tablet glass */}
-                <path 
-                  d="M310 125 L245 320 M330 125 L265 320" 
-                  stroke="white" 
-                  strokeWidth="1.5"
-                  opacity="0.15" 
-                  strokeLinecap="round"
-                />
-              </g>
-
-              {/* Definitions */}
-              <defs>
-                <linearGradient id="screen-gradient-splash" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#06b6d4" />
-                  <stop offset="50%" stopColor="#3b82f6" />
-                  <stop offset="100%" stopColor="#6366f1" />
-                </linearGradient>
-                <linearGradient id="border-gradient-splash" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#22d3ee" />
-                  <stop offset="100%" stopColor="#818cf8" />
-                </linearGradient>
-                <filter id="glow-filter-splash" x="-20%" y="-20%" width="140%" height="140%">
-                  <feDropShadow dx="0" dy="8" stdDeviation="12" floodColor="#06b6d4" floodOpacity="0.45" />
-                </filter>
-              </defs>
-            </svg>
-          </div>
-
-          {/* Typography Pairings matching VITRION SMART DISPLAY */}
-          <div className="space-y-1 select-none">
-            <h1 className="text-4xl font-extrabold tracking-[0.22em] text-white flex items-center justify-center">
-              VITRI
-              <span className="text-cyan-400 relative">
-                O<span className="absolute -bottom-1 left-0.5 w-[90%] h-1 bg-gradient-to-r from-cyan-400 to-indigo-500 rounded-sm skew-x-12" />
-              </span>
-              N
-            </h1>
-            <p className="text-xs font-semibold tracking-[0.58em] text-indigo-400 uppercase font-mono">
-              Smart Display
-            </p>
-          </div>
+          {/* High-fidelity Brand Logo and Wordmark */}
+          <VitrionLogo variant="full" size="xl" theme="dark" className="filter drop-shadow-[0_0_20px_rgba(56,189,248,0.25)]" />
 
           {/* Separation Accent Line */}
           <div className="w-24 h-0.5 bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent" />
@@ -375,8 +420,8 @@ export default function App() {
           
           {/* Header banner */}
           <div className="p-6 pb-2 text-center space-y-3">
-            <div className="w-12 h-12 bg-indigo-500/10 border border-indigo-400/20 rounded-2xl flex items-center justify-center mx-auto text-indigo-400 select-none">
-              <Tv className="w-7 h-7 animate-pulse" />
+            <div className="flex justify-center select-none pb-1">
+              <VitrionLogo variant="icon" size="sm" theme="dark" className="filter drop-shadow-[0_0_10px_rgba(56,189,248,0.25)]" />
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight">Acesse sua Conta</h1>
@@ -386,19 +431,19 @@ export default function App() {
 
           {/* Tab Selector */}
           <div className="px-6 pb-1">
-            <div className="flex bg-slate-955/80 p-1 rounded-xl border border-white/5">
+            <div className="flex bg-slate-955/80 p-1 rounded-xl border border-white/5 gap-1">
               <button
                 onClick={() => {
                   setLoginTab('client');
                   setClientLoginError('');
                 }}
-                className={`flex-1 py-2 text-center text-xs font-semibold rounded-lg transition duration-200 cursor-pointer flex items-center justify-center gap-1.5 ${
+                className={`flex-1 py-1.5 text-center text-[11px] font-bold rounded-lg transition duration-200 cursor-pointer flex items-center justify-center gap-1 ${
                   loginTab === 'client'
                     ? 'bg-indigo-600 text-white shadow-md'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <UserIcon className="w-3.5 h-3.5" />
+                <UserIcon className="w-3 h-3" />
                 Cliente
               </button>
               <button
@@ -406,14 +451,28 @@ export default function App() {
                   setLoginTab('admin');
                   setClientLoginError('');
                 }}
-                className={`flex-1 py-2 text-center text-xs font-semibold rounded-lg transition duration-200 cursor-pointer flex items-center justify-center gap-1.5 ${
+                className={`flex-1 py-1.5 text-center text-[11px] font-bold rounded-lg transition duration-200 cursor-pointer flex items-center justify-center gap-1 ${
                   loginTab === 'admin'
                     ? 'bg-indigo-600 text-white shadow-md'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                Administrador
+                <ShieldCheck className="w-3 h-3" />
+                Admin
+              </button>
+              <button
+                onClick={() => {
+                  setLoginTab('pair');
+                  setClientLoginError('');
+                }}
+                className={`flex-1 py-1.5 text-center text-[11px] font-bold rounded-lg transition duration-200 cursor-pointer flex items-center justify-center gap-1 ${
+                  loginTab === 'pair'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Tv className="w-3 h-3" />
+                Sincronizar
               </button>
             </div>
           </div>
@@ -511,21 +570,37 @@ export default function App() {
                   </p>
                 </div>
               </form>
-            ) : (
+            ) : loginTab === 'admin' ? (
               /* ADMINISTRATOR AUTH BLOCK */
               <div className="space-y-4">
                 <p className="text-[11px] text-slate-400 leading-relaxed text-center">
                   Espaço exclusivo para gestores da rede. Monitore e configure todas as TVs, mídias corporativas e campanhas globais.
                 </p>
 
-                <div className="space-y-3 py-1">
+                <div className="space-y-2.5 py-1">
+                  {/* Anonymous/Sandbox Bypass Option */}
+                  <button
+                    onClick={handleAnonymousLogin}
+                    id="btn-anonymous-login"
+                    type="button"
+                    className="w-full inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-550 border border-indigo-500/20 text-white text-xs font-bold rounded-xl shadow-md transition cursor-pointer"
+                  >
+                    <ShieldCheck className="w-4 h-4 shrink-0 text-cyan-300" />
+                    <span>Acesso Rápido Administrador</span>
+                  </button>
+
+                  <div className="flex items-center justify-center my-1 select-none">
+                    <span className="text-[9px] font-extrabold text-slate-500 uppercase tracking-widest">— OU SE PREFERIR —</span>
+                  </div>
+
                   {/* Google Login */}
                   <button
                     onClick={handleGoogleLogin}
                     id="btn-google-login"
-                    className="w-full inline-flex items-center justify-center gap-2.5 px-6 py-2.5 border border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/10 text-white text-xs font-bold rounded-xl shadow-md transition cursor-pointer"
+                    type="button"
+                    className="w-full inline-flex items-center justify-center gap-2.5 px-6 py-2.5 border border-white/10 hover:border-white/20 bg-slate-900/60 hover:bg-slate-900/90 text-slate-300 hover:text-white text-xs font-bold rounded-xl shadow-sm transition cursor-pointer"
                   >
-                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                    <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
                       <path
                         fill="#4285F4"
                         d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.92h6.61c-.29 1.5-.14 3.06-2.91 4.19v3.47h4.7c2.75-2.53 4.34-6.26 4.34-10.27l-.005-.72z"
@@ -568,6 +643,151 @@ export default function App() {
                   </div>
                 )}
               </div>
+            ) : (
+              /* QUICK TV PAIRING/SYNC FORM */
+              <form onSubmit={handleTVPairingSubmit} className="space-y-4 animate-fade-in">
+                <p className="text-[11px] text-slate-400 leading-relaxed text-center">
+                  Tem um monitor ou Smart TV exibindo um código de pareamento de 4 letras em sua tela? Sincronize-o instantaneamente abaixo.
+                </p>
+
+                {/* 4-digit code input */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block text-center">
+                    Código de Pareamento (4 Letras)
+                  </label>
+                  <div className="flex justify-center">
+                    <input
+                      type="text"
+                      required
+                      value={pairingCodeParam}
+                      onChange={(e) => {
+                        const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                        setPairingCodeParam(val.slice(0, 4));
+                      }}
+                      placeholder="ABCD"
+                      className="w-36 bg-slate-950/80 border border-white/10 focus:border-cyan-500 rounded-xl px-4 py-3 text-center text-xl font-black tracking-[0.25em] text-cyan-400 font-mono outline-none transition placeholder-slate-700 focus:ring-1 focus:ring-cyan-500/30 uppercase"
+                      maxLength={4}
+                    />
+                  </div>
+                </div>
+
+                {/* Connection type Action Selector */}
+                <div className="space-y-2">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Tipo de Conexão
+                  </span>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPairingAction('mirror')}
+                      className={`p-3 rounded-xl border text-left transition text-white cursor-pointer ${
+                        pairingAction === 'mirror'
+                          ? 'bg-indigo-600/10 border-indigo-500 shadow-[0_0_12px_rgba(99,102,241,0.15)]'
+                          : 'bg-slate-950/40 border-white/5 hover:border-white/10'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 font-bold text-[11px] text-indigo-300">
+                        <Monitor className="w-3.5 h-3.5" />
+                        Espelhar nesta tela
+                      </div>
+                      <p className="text-[9.5px] text-slate-450 mt-1 leading-snug">
+                        Simula a Smart TV direto neste navegador para testes.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPairingAction('pair_store')}
+                      className={`p-3 rounded-xl border text-left transition text-white cursor-pointer ${
+                        pairingAction === 'pair_store'
+                          ? 'bg-indigo-600/10 border-indigo-500 shadow-[0_0_12px_rgba(99,102,241,0.15)]'
+                          : 'bg-slate-950/40 border-white/5 hover:border-white/10'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 font-bold text-[11px] text-indigo-300">
+                        <UserCheck className="w-3.5 h-3.5" />
+                        Vincular ao Estabelecimento
+                      </div>
+                      <p className="text-[9.5px] text-slate-450 mt-1 leading-snug">
+                        Associa a TV física à conta da sua loja em tempo real.
+                      </p>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Conditional store credentials for pairing */}
+                {pairingAction === 'pair_store' && (
+                  <div className="space-y-3 p-3 bg-slate-950/40 border border-white/5 rounded-xl animate-fade-in text-left">
+                    <span className="text-[10px] font-extrabold text-cyan-400 uppercase tracking-wide block">
+                      Credenciais do Estabelecimento
+                    </span>
+                    
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Nome de Usuário
+                      </label>
+                      <input
+                        type="text"
+                        required={pairingAction === 'pair_store'}
+                        value={pairClientUser}
+                        onChange={(e) => setPairClientUser(e.target.value)}
+                        placeholder="Ex: alvoradapdv"
+                        className="w-full bg-slate-950/80 border border-white/10 focus:border-indigo-500 rounded-lg px-3 py-2 text-xs text-white outline-none transition placeholder-slate-500 focus:ring-1 focus:ring-indigo-500/30"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Senha de Acesso
+                      </label>
+                      <input
+                        type="password"
+                        required={pairingAction === 'pair_store'}
+                        value={pairClientPass}
+                        onChange={(e) => setPairClientPass(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full bg-slate-950/80 border border-white/10 focus:border-indigo-500 rounded-lg px-3 py-2 text-xs text-white outline-none transition placeholder-slate-500 focus:ring-1 focus:ring-indigo-500/30 font-mono"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Success/Error Feedbacks */}
+                {pairError && (
+                  <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-200 rounded-xl text-[11px] flex items-start gap-2 animate-fade-in text-left">
+                    <ShieldAlert className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+                    <p className="leading-snug">{pairError}</p>
+                  </div>
+                )}
+
+                {pairSuccess && (
+                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-200 rounded-xl text-[11px] flex items-start gap-2 animate-fade-in text-left">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
+                    <p className="leading-snug">{pairSuccess}</p>
+                  </div>
+                )}
+
+                {/* Submit button */}
+                <button
+                  type="submit"
+                  disabled={pairIsSubmitting}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-550 active:bg-indigo-700 disabled:opacity-60 text-white text-xs font-bold rounded-xl shadow-md transition duration-200 cursor-pointer"
+                >
+                  {pairIsSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                      <span>Sincronizando via Nuvem...</span>
+                    </>
+                  ) : (
+                    <span>
+                      {pairingAction === 'mirror' 
+                        ? '📺 Simular e Espelhar TV' 
+                        : '🏢 Parear e Conectar TV'}
+                    </span>
+                  )}
+                </button>
+              </form>
             )}
 
             {/* Link to TV Player */}
@@ -612,14 +832,11 @@ export default function App() {
       {/* Sidebar Navigation */}
       <aside className="w-64 bg-slate-900 flex flex-col shrink-0 hidden md:flex border-r border-slate-800 select-none">
         
-        <div className="p-6 pb-4 flex items-center gap-3 text-left">
-          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shrink-0">
-            <Tv className="w-4 h-4 text-white" />
-          </div>
-          <div>
-            <span className="text-white font-bold text-sm tracking-tight block">Vitrion Smart Display</span>
-            <span className="text-[10px] text-indigo-400 block uppercase font-bold">Painel Controle</span>
-          </div>
+        <div className="p-6 pb-4 flex flex-col items-start gap-1 text-left border-b border-slate-800/60 shadow-sm">
+          <VitrionLogo variant="badge" theme="dark" size="xs" />
+          <span className="text-[9px] text-indigo-400 font-bold uppercase tracking-wider pl-1 mr-1 mt-1 block">
+            Painel de Controle
+          </span>
         </div>
         
         <nav className="flex-1 px-4 mt-6 space-y-1">
@@ -722,10 +939,7 @@ export default function App() {
         {/* Mobile Navbar */}
         <header className="md:hidden bg-slate-900 border-b border-slate-800 py-3.5 px-4 flex items-center justify-between z-10 sticky top-0 shrink-0 select-none">
           <div className="flex items-center gap-2 text-left">
-            <div className="w-7 h-7 bg-indigo-600 rounded flex items-center justify-center">
-              <Tv className="w-4 h-4 text-white" />
-            </div>
-            <span className="text-white font-bold text-sm tracking-tight">Vitrion</span>
+            <VitrionLogo variant="badge" theme="dark" size="xs" />
           </div>
 
           <div className="flex items-center gap-3">
