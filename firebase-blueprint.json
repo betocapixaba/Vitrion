@@ -188,6 +188,18 @@
     "/plans/{planId}": {
       "schema": "Plan",
       "description": "Stores client subscription tiers and standard pricing limits"
+    },
+    "/authorized_admins/{adminId}": {
+      "schema": "object",
+      "description": "Stores credentials of secondary authorized administrators"
+    },
+    "/admin_audit_logs/{logId}": {
+      "schema": "object",
+      "description": "Stores chronological security actions and transactions audit trails"
+    },
+    "/admin_settings/{settingId}": {
+      "schema": "object",
+      "description": "Stores configurable admin platform preferences and master customized credentials"
     }
   }
 }

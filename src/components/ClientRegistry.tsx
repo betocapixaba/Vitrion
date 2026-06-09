@@ -10,7 +10,7 @@ import {
   deleteDoc, 
   serverTimestamp 
 } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
+import { db, auth, logAdminAction } from '../lib/firebase';
 import { Client } from '../types';
 import { 
   Search, Plus, Pencil, Trash2, Phone, MessageSquare, 
@@ -384,6 +384,11 @@ export default function ClientRegistry() {
         const docRef = doc(db, path, clientId);
         await updateDoc(docRef, clientPayload);
         setSuccessText('Cliente atualizado com sucesso!');
+        await logAdminAction(
+          'UPDATE_CLIENT', 
+          `Cliente: ${establishmentName}`, 
+          `Atualizou dados cadastrais do estabelecimento "${establishmentName}".`
+        );
       } else {
         // Complete create snapshot
         const docRef = doc(db, path, clientId);
@@ -394,6 +399,11 @@ export default function ClientRegistry() {
           createdAt: serverTimestamp()
         });
         setSuccessText('Cliente registrado com sucesso!');
+        await logAdminAction(
+          'CREATE_CLIENT', 
+          `Cliente: ${establishmentName}`, 
+          `Registrou o estabelecimento "${establishmentName}" (${username}) com o plano tierID: ${planId}.`
+        );
       }
 
       // Close modal on brief delay
@@ -424,8 +434,14 @@ export default function ClientRegistry() {
 
     try {
       const docRef = doc(db, path, clientId);
+      const clientName = clients.find(c => c.id === clientId)?.establishmentName || clientId;
       await deleteDoc(docRef);
       setSuccessText('Cliente removido com sucesso!');
+      await logAdminAction(
+        'DELETE_CLIENT', 
+        `Cliente ID: ${clientId}`, 
+        `Removeu o estabelecimento associado "${clientName}" e desativou as TVs conectadas a ele.`
+      );
       setTimeout(() => setSuccessText(''), 3000);
     } catch (err) {
       console.error(err);

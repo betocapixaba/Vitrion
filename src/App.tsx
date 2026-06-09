@@ -3,9 +3,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut, User } from 'firebase/auth';
+import { onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut, User, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { collection, query, where, getDocs, onSnapshot, doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from './lib/firebase';
+import { auth, db, logAdminAction } from './lib/firebase';
 import MediaManager from './components/MediaManager';
 import PlaylistManager from './components/PlaylistManager';
 import ScreenManager from './components/ScreenManager';
@@ -14,6 +14,7 @@ import ClientRegistry from './components/ClientRegistry';
 import ClientPortal from './components/ClientPortal';
 import PlanManager from './components/PlanManager';
 import ClientSelfRegistration from './components/ClientSelfRegistration';
+import AdminHistoryManager from './components/AdminHistoryManager';
 import { VitrionLogo } from './components/VitrionLogo';
 import { Client } from './types';
 import { 
@@ -67,7 +68,7 @@ export default function App() {
     }
     return 'admin';
   });
-  const [activeTab, setActiveTab] = useState<'screens' | 'media' | 'playlists' | 'clients' | 'plans'>('screens');
+  const [activeTab, setActiveTab] = useState<'screens' | 'media' | 'playlists' | 'clients' | 'plans' | 'admins'>('screens');
 
   // Splash screen timeout loop running for 3 seconds
   useEffect(() => {
@@ -100,39 +101,195 @@ export default function App() {
   const [clientLoggingIn, setClientLoggingIn] = useState(false);
   const [clientLoginError, setClientLoginError] = useState('');
 
+  // Admin Custom Email & Password states
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [adminLoggingIn, setAdminLoggingIn] = useState(false);
+  const [adminAuthError, setAdminAuthError] = useState('');
+  const [adminAuthSuccess, setAdminAuthSuccess] = useState('');
   const [isSandboxAdmin, setIsSandboxAdmin] = useState(false);
+ 
+   // Monitor Auth Changes
+   useEffect(() => {
+     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+       if (firebaseUser) {
+         // Ensure only betocapixaba@gmail.com is allowed into administrator portal
+         if (firebaseUser.email === 'betocapixaba@gmail.com') {
+           setUser(firebaseUser);
+           setIsSandboxAdmin(false);
+         } else {
+           signOut(auth);
+           setUser(null);
+           setAdminAuthError('Acesso não autorizado! Apenas o administrador betocapixaba@gmail.com está autorizado.');
+         }
+       } else {
+         // If we are currently in a custom local sandbox admin session, don't clear it
+         setUser((curr: any) => {
+           if (curr && curr.isSandbox) return curr;
+           return null;
+         });
+       }
+       setAuthChecking(false);
+     });
+     return () => unsubscribe();
+   }, [isSandboxAdmin]);
+ 
+   // Login handler
+   const handleGoogleLogin = async () => {
+     const provider = new GoogleAuthProvider();
+     setAuthError('');
+     try {
+       await signInWithPopup(auth, provider);
+     } catch (err: any) {
+       console.error('Falha ao autenticar com Google: ', err);
+       setAuthError(
+         'O navegador bloqueou ou restringiu o pop-up ou cookies devido ao ambiente integrado (iframe) do AI Studio. Por favor, clique em "Abrir Aplicativo em Nova Aba" para usar a sua conta do Gmail real com segurança.'
+       );
+     }
+   };
+ 
+   // Submit Handler for custom Admin Gmail / Email + password form
+   const handleAdminEmailLogin = async (e: React.FormEvent) => {
+     e.preventDefault();
+     setAdminAuthError('');
+     setAdminAuthSuccess('');
+     
+     const emailOrUser = adminEmail.trim();
+     if (!emailOrUser) {
+       setAdminAuthError('Por favor, informe seu usuário ou e-mail de administrador.');
+       return;
+     }
+     if (!adminPassword) {
+       setAdminAuthError('Por favor, informe sua senha de acesso.');
+       return;
+     }
+ 
+     setAdminLoggingIn(true);
+     
+     // Check master admin credentials: beto / Vi9212376!@ or betocapixaba@gmail.com / Vi9212376!@
+     const normalizedUser = emailOrUser.toLowerCase();
+     let customMaster: any = null;
+     try {
+       const masterSnap = await getDoc(doc(db, 'admin_settings', 'master'));
+       if (masterSnap.exists()) {
+         customMaster = masterSnap.data();
+       }
+     } catch (dbErr) {
+       console.warn('Error reading dynamic master credentials:', dbErr);
+     }
+     const masterUser = (customMaster?.username || 'beto').toLowerCase();
+     const masterEmail = (customMaster?.email || 'betocapixaba@gmail.com').toLowerCase();
+     const masterPass = customMaster?.password || 'Vi9212376!@';
 
-  // Monitor Auth Changes
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      if (firebaseUser) {
-        setUser(firebaseUser);
-        setIsSandboxAdmin(false);
-      } else {
-        // If we are currently in a custom local sandbox admin session, don't clear it
-        setUser((curr: any) => {
-          if (curr && curr.isSandbox) return curr;
-          return null;
-        });
+     if ((normalizedUser === masterUser || normalizedUser === masterEmail) && adminPassword === masterPass) {
+       try {
+         // Try background authentication with Firebase using standard Gmail account so Firestore triggers write rules normally
+         try {
+           await signInWithEmailAndPassword(auth, 'betocapixaba@gmail.com', 'Vi9212376!@');
+           if (typeof window !== 'undefined') {
+              localStorage.setItem('vitrion_active_admin', JSON.stringify({
+                uid: 'vitrion-sandbox-admin',
+                email: 'betocapixaba@gmail.com',
+                displayName: 'Beto (Administrador)'
+              }));
+            }
+            setAdminAuthSuccess('Autenticação de administrador realizada com sucesso!');
+            await logAdminAction('LOGIN_SUCCESS', 'Beto (Administrador)', 'Administrador mestre iniciou sessão no painel.');
+         } catch (fbErr: any) {
+           console.warn('Real Firebase sign-in was blocked or not configured, registering automatically or bypassing securely:', fbErr);
+           
+           if (fbErr.code === 'auth/user-not-found' || fbErr.code === 'auth/invalid-credential') {
+             try {
+               await createUserWithEmailAndPassword(auth, 'betocapixaba@gmail.com', 'Vi9212376!@');
+               setAdminAuthSuccess('Cadastro e autenticação integrados com sucesso!');
+             } catch (createErr) {
+               // Bypassing directly
+               setUser({
+                 uid: 'vitrion-sandbox-admin',
+                 email: 'betocapixaba@gmail.com',
+                 displayName: 'Beto (Administrador)',
+                 isSandbox: true,
+                 emailVerified: true
+               });
+               setAdminAuthSuccess('Acesso mestre concedido localmente!');
+             }
+           } else {
+             // General Firestore sandbox bypass
+             setUser({
+               uid: 'vitrion-sandbox-admin',
+               email: 'betocapixaba@gmail.com',
+               displayName: 'Beto (Administrador)',
+               isSandbox: true,
+               emailVerified: true
+             });
+             setAdminAuthSuccess('Acesso mestre concedido localmente!');
+           }
+         }
+         setAdminEmail('');
+         setAdminPassword('');
+       } catch (err: any) {
+         setAdminAuthError('Erro ao iniciar sessão: ' + (err.message || err.code));
+       } finally {
+         setAdminLoggingIn(false);
+       }
+       return;
+     }
+ 
+     // Check secondary authorized admins in real-time collection
+      try {
+        const q = query(
+          collection(db, 'authorized_admins'),
+          where('username', '==', normalizedUser)
+        );
+        const querySnap = await getDocs(q);
+
+        if (!querySnap.empty) {
+          let matchedAdmin: any = null;
+          querySnap.forEach((docSnap) => {
+            const data = docSnap.data();
+            if (data.password === adminPassword) {
+              matchedAdmin = { id: docSnap.id, ...data };
+            }
+          });
+
+          if (matchedAdmin) {
+            const activeAdminObj = {
+              uid: matchedAdmin.id,
+              email: matchedAdmin.email || `${matchedAdmin.username}@vitrion.com`,
+              displayName: matchedAdmin.name
+            };
+
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('vitrion_active_admin', JSON.stringify(activeAdminObj));
+            }
+
+            setUser({
+              uid: matchedAdmin.id,
+              email: matchedAdmin.email || `${matchedAdmin.username}@vitrion.com`,
+              displayName: matchedAdmin.name,
+              isSandbox: true,
+              emailVerified: true
+            });
+
+            await logAdminAction('LOGIN_SUCCESS', `${matchedAdmin.name} (Auxiliar)`, 'Administrador auxiliar credenciado iniciou sessão no painel.');
+            setAdminAuthSuccess('Autenticação de administrador realizada com sucesso!');
+            setAdminEmail('');
+            setAdminPassword('');
+            setAdminLoggingIn(false);
+            return;
+          }
+        }
+      } catch (dbErr) {
+        console.warn('Error reading authorized secondary admins collection:', dbErr);
       }
-      setAuthChecking(false);
-    });
-    return () => unsubscribe();
-  }, [isSandboxAdmin]);
 
-  // Login handler
-  const handleGoogleLogin = async () => {
-    const provider = new GoogleAuthProvider();
-    setAuthError('');
-    try {
-      await signInWithPopup(auth, provider);
-    } catch (err: any) {
-      console.error('Falha ao autenticar com Google: ', err);
-      setAuthError(
-        'O navegador bloqueou ou restringiu o pop-up ou cookies devido ao ambiente integrado (iframe) do AI Studio. Por favor, clique em "Abrir Aplicativo em Nova Aba" para usar a sua conta do Gmail real com segurança.'
-      );
-    }
-  };
+      // Block non-authorized accounts
+     setTimeout(() => {
+       setAdminAuthError('Usuário ou senha de acesso incorretos. Apenas administradores autorizados têm acesso a este painel.');
+       setAdminLoggingIn(false);
+     }, 700);
+   };
 
   // Safe login for sandboxed environments
   const handleAnonymousLogin = async () => {
@@ -159,6 +316,9 @@ export default function App() {
     try {
       setIsSandboxAdmin(false);
       setUser(null);
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('vitrion_active_admin');
+      }
       await signOut(auth);
       setAppMode('admin');
     } catch (err) {
@@ -576,82 +736,107 @@ export default function App() {
                 </div>
               </form>
             ) : loginTab === 'admin' ? (
-              /* ADMINISTRATOR AUTH BLOCK WITH ONLY GMAIL AND IFRAME WARNINGS */
-              <div className="space-y-4">
+              /* ADMINISTRATOR EMAIL & PASSWORD AUTH BLOCK FOR GMAIL USERS */
+              <form onSubmit={handleAdminEmailLogin} className="space-y-4 animate-fade-in">
+                
                 <p className="text-[11px] text-slate-400 leading-relaxed text-center">
-                  Espaço exclusivo para gestores da rede. Faça login com o seu e-mail do Gmail para gerenciar todos os monitores e campanhas.
+                  <span>Espaço exclusivo para gestores autorizados da rede. Informe seu Usuário ou e-mail cadastrado e sua senha de acesso.</span>
                 </p>
 
-                <div className="space-y-3 py-1">
-                  {typeof window !== 'undefined' && window.self !== window.top ? (
-                    /* Display beautiful explicit notice with high-contrast Action if inside AI Studio Sandbox iframe */
-                    <div className="p-4 bg-amber-500/10 border border-amber-500/20 text-slate-200 rounded-xl text-center space-y-3.5 shadow-md animate-fade-in">
-                      <div className="flex items-center justify-center gap-1.5 text-amber-400 font-extrabold uppercase text-[10px] tracking-widest">
-                        <span>⚠️ Restrição de Login no iFrame</span>
-                      </div>
-                      <p className="leading-relaxed text-[11px] text-slate-300">
-                        O Google restringe a autenticação via OAuth/Gmail dentro de iFrames do AI Studio por segurança.
-                        Por favor, abra o aplicativo em uma **Nova Aba** para fazer login no Gmail normalmente.
-                      </p>
-                      <a
-                        href={typeof window !== 'undefined' ? window.location.href : '#'}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-550 border border-indigo-500/20 text-white text-xs font-bold rounded-xl shadow-md transition cursor-pointer font-sans"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        Abrir Aplicativo em Nova Aba
-                      </a>
-                    </div>
-                  ) : (
-                    /* Normal Tab flow: display native Google Sign In directly */
-                    <button
-                      onClick={handleGoogleLogin}
-                      id="btn-google-login"
-                      type="button"
-                      className="w-full inline-flex items-center justify-center gap-2.5 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-550 border border-indigo-500/20 text-white text-xs font-bold rounded-xl shadow-md transition cursor-pointer"
-                    >
-                      <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
-                        <path
-                          fill="#4285F4"
-                          d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.92h6.61c-.29 1.5-.14 3.06-2.91 4.19v3.47h4.7c2.75-2.53 4.34-6.26 4.34-10.27l-.005-.72z"
-                        />
-                        <path
-                          fill="#34A853"
-                          d="M12 24c3.24 0 5.97-1.08 7.96-2.91l-4.7-3.47c-1.3.87-2.97 1.39-4.7 1.39-3.62 0-6.68-2.45-7.77-5.74H.32v3.58C2.3 20.83 6.88 24 12 24z"
-                        />
-                        <path
-                          fill="#FBBC05"
-                          d="M4.23 13.27a7.185 7.185 0 0 1 0-4.54V5.15H.32a11.97 11.97 0 0 0 0 10.7l3.91-3.58z"
-                        />
-                        <path
-                          fill="#EA4335"
-                          d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.43-3.43C17.96 1.15 15.24 0 12 0 6.88 0 2.3 3.17.32 7.15l3.91 3.58c1.09-3.29 4.15-5.74 7.77-5.74z"
-                        />
-                      </svg>
-                      Acessar com Conta Gmail
-                    </button>
-                  )}
+                {/* Username / Email input */}
+                <div className="space-y-1.5 text-left">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Usuário ou E-mail
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={adminEmail}
+                    onChange={(e) => setAdminEmail(e.target.value)}
+                    placeholder="beto..."
+                    className="w-full bg-slate-950/80 border border-white/10 focus:border-indigo-500 rounded-lg px-3 py-2 text-xs text-white outline-none transition placeholder-slate-500 focus:ring-1 focus:ring-indigo-500/30"
+                  />
                 </div>
 
-                {/* Google login sandboxing exception notice */}
-                {authError && (
-                  <div className="p-4 bg-amber-500/10 border border-amber-500/20 text-amber-200 rounded-xl text-xs space-y-2 mt-2 text-left animate-fade-in shadow-md">
-                    <div className="flex items-center gap-1.5 text-amber-300 font-bold uppercase text-[10px] tracking-wider">
-                      <span>💡 Restrição de iFrame Detectada</span>
-                    </div>
-                    <p className="leading-relaxed text-[11px] text-slate-300">{authError}</p>
-                    <div className="pt-1 border-t border-white/5 flex flex-wrap items-center gap-3 text-[10px] text-slate-400 font-medium">
-                      <span>Sugestão:</span>
-                      <a
-                        href={typeof window !== 'undefined' ? window.location.href : '#'}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline text-indigo-300 hover:text-indigo-200 flex items-center gap-1"
-                      >
-                        Abrir em Nova Aba <ExternalLink className="w-3" />
-                      </a>
-                    </div>
+                {/* Password input with toggle visibility */}
+                <div className="space-y-1.5 text-left">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Senha de Acesso
+                    </label>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={showAdminPassword ? 'text' : 'password'}
+                      required
+                      value={adminPassword}
+                      onChange={(e) => setAdminPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full bg-slate-950/80 border border-white/10 focus:border-indigo-500 rounded-lg pl-3 pr-10 py-2 text-xs text-white outline-none transition placeholder-slate-500 focus:ring-1 focus:ring-indigo-500/30 font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowAdminPassword(!showAdminPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition cursor-pointer"
+                    >
+                      {showAdminPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                  <span className="text-[9px] text-slate-500 leading-normal block">
+                    Nota: O cadastro de novos administradores é restrito. Contate o suporte para autorizações adicionais.
+                  </span>
+                </div>
+
+                {/* Status indicator feedbacks */}
+                {adminAuthError && (
+                  <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-200 rounded-xl text-[11px] flex items-start gap-2 animate-fade-in text-left">
+                    <ShieldAlert className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+                    <p className="leading-snug">{adminAuthError}</p>
+                  </div>
+                )}
+
+                {adminAuthSuccess && (
+                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-200 rounded-xl text-[11px] flex items-start gap-2 animate-fade-in text-left">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
+                    <p className="leading-snug">{adminAuthSuccess}</p>
+                  </div>
+                )}
+
+                {/* Login Button */}
+                <button
+                  type="submit"
+                  disabled={adminLoggingIn}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-550 active:bg-indigo-700 disabled:opacity-60 text-white text-xs font-bold rounded-xl shadow-md transition duration-200 cursor-pointer"
+                >
+                  {adminLoggingIn ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                      <span>Verificando Credenciais...</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="w-4 h-4" />
+                      <span>Acessar Painel Administrador</span>
+                    </>
+                  )}
+                </button>
+
+                {/* Dynamic alternative Google Popup OAuth link (only visible if outside of AI Studio iframe dashboard) */}
+                {typeof window !== 'undefined' && window.self === window.top && (
+                  <div className="pt-2">
+                    <button
+                      onClick={handleGoogleLogin}
+                      type="button"
+                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 border border-white/5 hover:border-white/10 bg-slate-950/40 hover:bg-slate-950/70 text-slate-300 hover:text-white text-[11px] font-bold rounded-lg transition"
+                    >
+                      <svg className="w-3 h-3 shrink-0" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.92h6.61c-.29 1.5-.14 3.06-2.91 4.19v3.47h4.7c2.75-2.53 4.34-6.26 4.34-10.27l-.005-.72z" />
+                        <path fill="#34A853" d="M12 24c3.24 0 5.97-1.08 7.96-2.91l-4.7-3.47c-1.3.87-2.97 1.39-4.7 1.39-3.62 0-6.68-2.45-7.77-5.74H.32v3.58C2.3 20.83 6.88 24 12 24z" />
+                        <path fill="#FBBC05" d="M4.23 13.27a7.185 7.185 0 0 1 0-4.54V5.15H.32a11.97 11.97 0 0 0 0 10.7l3.91-3.58z" />
+                        <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.43-3.43C17.96 1.15 15.24 0 12 0 6.88 0 2.3 3.17.32 7.15l3.91 3.58c1.09-3.29 4.15-5.74 7.77-5.74z" />
+                      </svg>
+                      Ou Login expresso via Conta Google pop-up
+                    </button>
                   </div>
                 )}
 
@@ -668,7 +853,7 @@ export default function App() {
                     &larr; Voltar para Painel do Cliente
                   </button>
                 </div>
-              </div>
+              </form>
             ) : (
               /* QUICK TV PAIRING/SYNC FORM */
               <form onSubmit={handleTVPairingSubmit} className="space-y-4 animate-fade-in">
@@ -927,6 +1112,19 @@ export default function App() {
             <DollarSign className="w-4 h-4 shrink-0" />
             <span className="text-sm">Configurar Planos</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('admins')}
+            id="nav-tab-admins"
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition ${
+              activeTab === 'admins'
+                ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 font-semibold'
+                : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-100 font-medium'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4 shrink-0 text-cyan-400" />
+            <span className="text-sm">Admins & Histórico</span>
+          </button>
         </nav>
 
         {/* User Profile Footer */}
@@ -1021,6 +1219,14 @@ export default function App() {
           >
             Clientes
           </button>
+          <button
+            onClick={() => setActiveTab('admins')}
+            className={`flex-1 py-2 text-center text-xs font-semibold border-b-2 transition ${
+              activeTab === 'admins' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'
+            }`}
+          >
+            Admins
+          </button>
         </div>
 
         {/* Desktop Header Top Bar */}
@@ -1032,6 +1238,7 @@ export default function App() {
               {activeTab === 'playlists' && 'Compilador de Sequências de Rodízio'}
               {activeTab === 'clients' && 'Registro e CRM de Estabelecimentos Associados'}
               {activeTab === 'plans' && 'Gestão Tarifária e Planos de Assinatura'}
+              {activeTab === 'admins' && 'Administradores Autorizados e Audit trail (Logs)'}
             </h1>
             <div className="h-4 w-px bg-slate-200 mx-2"></div>
             <div className="flex gap-2">
@@ -1079,6 +1286,7 @@ export default function App() {
             {activeTab === 'playlists' && <PlaylistManager />}
             {activeTab === 'clients' && <ClientRegistry />}
             {activeTab === 'plans' && <PlanManager />}
+            {activeTab === 'admins' && <AdminHistoryManager />}
           </div>
           
           {/* Global Footer info requested by user */}

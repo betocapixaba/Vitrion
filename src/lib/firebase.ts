@@ -76,3 +76,50 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   console.error('Firestore Comprehensive Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
+
+/**
+ * Log administrative actions into the firestore audit logs collection
+ */
+import { addDoc, collection } from 'firebase/firestore';
+
+export async function logAdminAction(action: string, target: string, details: string) {
+  try {
+    let admin = {
+      uid: 'unknown',
+      email: 'unauthenticated',
+      displayName: 'Desconhecido'
+    };
+    
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('vitrion_active_admin');
+      if (saved) {
+        try {
+          admin = JSON.parse(saved);
+        } catch (e) {
+          console.warn('Error reading active admin from localStorage:', e);
+        }
+      }
+    }
+    
+    if (admin.uid === 'unknown' && auth.currentUser) {
+      admin = {
+        uid: auth.currentUser.uid,
+        email: auth.currentUser.email || '',
+        displayName: auth.currentUser.displayName || auth.currentUser.email || 'Administrador'
+      };
+    }
+    
+    await addDoc(collection(db, 'admin_audit_logs'), {
+      adminUid: admin.uid,
+      adminName: admin.displayName,
+      adminEmail: admin.email,
+      action,
+      target,
+      details,
+      timestamp: new Date() // JS Date is natively parsed by Firestore as Timestamp
+    });
+  } catch (error) {
+    console.error('Failed to write audit log in Firestore:', error);
+  }
+}
+
