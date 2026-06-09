@@ -379,7 +379,7 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
 
   // Remove screen/display
   const handleRemoveDisplay = async (screenId: string, screenName: string) => {
-    if (!window.confirm(`Deseja realmente excluir o display "${screenName}"? Esta ação removerá a transmissão para esta tela.`)) {
+    if (!window.confirm(`Deseja realmente excluir e remover o display "${screenName}" permanentemente? Esta ação apagará o monitor do sistema.`)) {
       return;
     }
 
@@ -387,10 +387,11 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
     setSuccessMsg('');
 
     try {
+      // Directly delete the screen document from Firestore
       await deleteDoc(doc(db, 'screens', screenId));
-      setSuccessMsg(`Display "${screenName}" removido com sucesso.`);
+      setSuccessMsg(`Display "${screenName}" foi removido com sucesso.`);
       setTimeout(() => setSuccessMsg(''), 3000);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       setErrorMsg('Falha ao remover o display.');
     }
@@ -1274,7 +1275,7 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
                               }`}
                               title="Limpar sintonia e voltar para a tela padrão de pareamento"
                             >
-                              Remove
+                              Reset (Idle)
                             </button>
                           </div>
                         </div>

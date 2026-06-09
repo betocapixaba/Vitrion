@@ -25,7 +25,37 @@ export default function PlaylistManager() {
   const [playlistSearch, setPlaylistSearch] = useState('');
   const [filterClientId, setFilterClientId] = useState('all');
 
-  const currentUserId = auth.currentUser?.uid;
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const checkAuth = () => {
+      if (auth.currentUser) {
+        setCurrentUserId(auth.currentUser.uid);
+      } else {
+        if (typeof window !== 'undefined') {
+          try {
+            const saved = localStorage.getItem('vitrion_active_admin');
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              if (parsed && parsed.uid) {
+                setCurrentUserId(parsed.uid);
+                return;
+              }
+            }
+          } catch (e) {
+            console.warn('Error reading active admin from localStorage:', e);
+          }
+        }
+        setCurrentUserId(null);
+      }
+    };
+
+    checkAuth();
+    const unsubscribe = auth.onAuthStateChanged(() => {
+      checkAuth();
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Sync Library
   useEffect(() => {
@@ -95,8 +125,7 @@ export default function PlaylistManager() {
 
     // Listen clients
     const clientQuery = query(
-      collection(db, 'clients'),
-      where('ownerId', '==', currentUserId)
+      collection(db, 'clients')
     );
     const unsubscribeClients = onSnapshot(
       clientQuery,

@@ -43,7 +43,38 @@ export default function ScreenManager() {
   const [simulatedAsset, setSimulatedAsset] = useState<any>(null);
   const [playlistIndex, setPlaylistIndex] = useState(0);
 
-  const currentUserId = auth.currentUser?.uid;
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const checkAuth = () => {
+      if (auth.currentUser) {
+        setCurrentUserId(auth.currentUser.uid);
+      } else {
+        if (typeof window !== 'undefined') {
+          try {
+            const saved = localStorage.getItem('vitrion_active_admin');
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              if (parsed && parsed.uid) {
+                setCurrentUserId(parsed.uid);
+                return;
+              }
+            }
+          } catch (e) {
+            console.warn('Error reading active admin from localStorage:', e);
+          }
+        }
+        setCurrentUserId(null);
+      }
+    };
+
+    checkAuth();
+    const unsubscribe = auth.onAuthStateChanged(() => {
+      checkAuth();
+    });
+    return () => unsubscribe();
+  }, []);
+
   const hasAutoSelected = useRef(false);
 
   // Sync Screens, Playlists, Assets & Clients
@@ -355,26 +386,16 @@ export default function ScreenManager() {
     }
   };
 
-  // Turn screen off or delete mapping
+  // Permanently delete screen from Firestore database
   const handleUnpairScreen = async (screenId: string) => {
-    if (!window.confirm('Deseja desvincular este monitor da sua conta? A TV voltará ao painel de pareamento inicial.')) return;
+    if (!window.confirm('Deseja realmente EXCLUIR este monitor/display permanentemente do sistema? Esta ação apagará o registro da TV no banco de dados.')) return;
     try {
-      // Set ownerId back to empty and clear settings
-      await updateDoc(doc(db, 'screens', screenId), {
-        name: 'Smart TV',
-        ownerId: '',
-        pairedAt: null,
-        clientId: '',
-        contentType: 'idle',
-        contentId: '',
-        status: 'online',
-        updatedAt: serverTimestamp(),
-      });
+      await deleteDoc(doc(db, 'screens', screenId));
       if (selectedScreenId === screenId) {
         setSelectedScreenId(null);
       }
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `screens/${screenId}`);
+      handleFirestoreError(err, OperationType.DELETE, `screens/${screenId}`);
     }
   };
 
@@ -886,7 +907,7 @@ export default function ScreenManager() {
                                 handleUnpairScreen(screen.id);
                               }}
                               className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-slate-100 rounded transition shrink-0"
-                              title="Desvincular Dispositivo"
+                              title="Excluir Monitor Permanentemente"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -1190,7 +1211,7 @@ export default function ScreenManager() {
                                             handleUnpairScreen(scr.id);
                                           }}
                                           className="p-1 text-slate-400 hover:text-red-500 hover:bg-slate-50 rounded transition"
-                                          title="Desvincular Aparelho"
+                                          title="Excluir Monitor Permanentemente"
                                         >
                                           <Trash2 className="w-3.5 h-3.5" />
                                         </button>
@@ -1357,7 +1378,7 @@ export default function ScreenManager() {
                                       handleUnpairScreen(scr.id);
                                     }}
                                     className="p-1 text-slate-400 hover:text-red-500 hover:bg-slate-50 rounded transition"
-                                    title="Desvincular Aparelho"
+                                    title="Excluir Monitor Permanentemente"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>

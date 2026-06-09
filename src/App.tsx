@@ -25,7 +25,25 @@ import {
 } from 'lucide-react';
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('vitrion_active_admin');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && parsed.uid) {
+            return {
+              ...parsed,
+              isSandbox: true
+            };
+          }
+        }
+      } catch (e) {
+        console.warn('Error reviving active admin from localStorage:', e);
+      }
+    }
+    return null;
+  });
   const [authChecking, setAuthChecking] = useState(true);
   const [authError, setAuthError] = useState('');
   
@@ -40,6 +58,20 @@ export default function App() {
   // Synchronized Displays dynamic listeners for administrator dashboard
   useEffect(() => {
     if (!user) return;
+
+    // Auto-sync active admin state to localStorage for sub-components
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('vitrion_active_admin', JSON.stringify({
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName || 'Administrador'
+        }));
+      } catch (e) {
+        console.warn('Error syncing active admin to localStorage:', e);
+      }
+    }
+
     const screensCol = collection(db, 'screens');
     const unsubscribe = onSnapshot(screensCol, (snapshot) => {
       let total = 0;

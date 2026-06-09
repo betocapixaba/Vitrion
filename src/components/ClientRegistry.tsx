@@ -57,6 +57,37 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 
 export default function ClientRegistry() {
   const [clients, setClients] = useState<Client[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const checkAuth = () => {
+      if (auth.currentUser) {
+        setCurrentUserId(auth.currentUser.uid);
+      } else {
+        if (typeof window !== 'undefined') {
+          try {
+            const saved = localStorage.getItem('vitrion_active_admin');
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              if (parsed && parsed.uid) {
+                setCurrentUserId(parsed.uid);
+                return;
+              }
+            }
+          } catch (e) {
+            console.warn('Error reading active admin from localStorage:', e);
+          }
+        }
+        setCurrentUserId(null);
+      }
+    };
+
+    checkAuth();
+    const unsubscribe = auth.onAuthStateChanged(() => {
+      checkAuth();
+    });
+    return () => unsubscribe();
+  }, []);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [errorText, setErrorText] = useState('');
@@ -236,8 +267,7 @@ export default function ClientRegistry() {
 
   // Monitor client records for all users (administrator total access)
   useEffect(() => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) {
+    if (!currentUserId) {
       setIsLoading(false);
       return;
     }
@@ -276,7 +306,7 @@ export default function ClientRegistry() {
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [currentUserId]);
 
   const openAddModal = () => {
     setEditingClient(null);
@@ -331,9 +361,8 @@ export default function ClientRegistry() {
     setErrorText('');
     setSuccessText('');
 
-    const currentUser = auth.currentUser;
-    if (!currentUser) {
-      setErrorText('Sessão expirada. Autentique-se novamente.');
+    if (!currentUserId) {
+      setErrorText('Sessão de administrador não identificada. Autentique-se novamente.');
       return;
     }
 
@@ -395,7 +424,7 @@ export default function ClientRegistry() {
         await setDoc(docRef, {
           ...clientPayload,
           id: clientId,
-          ownerId: currentUser.uid,
+          ownerId: currentUserId,
           createdAt: serverTimestamp()
         });
         setSuccessText('Cliente registrado com sucesso!');
@@ -540,15 +569,24 @@ export default function ClientRegistry() {
   // Filter clients by search terms (establishmentName, phone, username, city, state, cep)
   const filteredClients = clients.filter(c => {
     const term = searchTerm.toLowerCase();
+    const estName = (c.establishmentName || '').toLowerCase();
+    const phoneNum = c.phone || '';
+    const whatsappNum = c.whatsapp || '';
+    const uName = (c.username || '').toLowerCase();
+    const emailAddr = (c.email || '').toLowerCase();
+    const cityName = (c.city || '').toLowerCase();
+    const stateName = (c.state || '').toLowerCase();
+    const zipCode = (c.cep || '').toLowerCase();
+
     return (
-      c.establishmentName.toLowerCase().includes(term) ||
-      c.phone.includes(term) ||
-      c.whatsapp.includes(term) ||
-      c.username.toLowerCase().includes(term) ||
-      c.email.toLowerCase().includes(term) ||
-      c.city.toLowerCase().includes(term) ||
-      c.state.toLowerCase().includes(term) ||
-      (c.cep && c.cep.toLowerCase().includes(term))
+      estName.includes(term) ||
+      phoneNum.includes(term) ||
+      whatsappNum.includes(term) ||
+      uName.includes(term) ||
+      emailAddr.includes(term) ||
+      cityName.includes(term) ||
+      stateName.includes(term) ||
+      zipCode.includes(term)
     );
   });
 
@@ -672,17 +710,18 @@ export default function ClientRegistry() {
                     <div className="flex items-center gap-1.5 shrink-0 select-none">
                       <button
                         onClick={() => openEditModal(client)}
-                        title="Editar Registro"
-                        className="p-1 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 rounded-md transition cursor-pointer"
+                        title="Editar Registro e Planos"
+                        className="p-1 px-2 border border-indigo-150 rounded-lg bg-indigo-50/50 hover:bg-indigo-50 hover:border-indigo-300 text-indigo-600 transition flex items-center gap-1 text-[10px] font-bold cursor-pointer"
                       >
-                        <Pencil className="w-3.5 h-3.5" />
+                        <Pencil className="w-3 h-3 shrink-0" />
+                        <span>Editar</span>
                       </button>
                       <button
                         onClick={() => handleDeleteClient(client.id)}
                         title="Deletar Registro"
-                        className="p-1 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-md transition cursor-pointer"
+                        className="p-1 hover:bg-rose-50 border border-slate-150 hover:border-rose-200 text-slate-400 hover:text-rose-600 rounded-lg transition overflow-hidden cursor-pointer"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-3.5 h-3.5 shrink-0" />
                       </button>
                     </div>
                   </div>
@@ -711,7 +750,17 @@ export default function ClientRegistry() {
                     <div className="bg-indigo-50/50 border border-indigo-100 p-2.5 rounded-lg flex flex-col gap-1.5 estimation-block">
                       <div className="flex items-center justify-between">
                         <div className="space-y-0.5">
-                          <span className="text-[8px] font-mono font-bold text-indigo-400 uppercase tracking-wider block">Plano Contratado</span>
+                          <div className="flex items-center gap-1">
+                            <span className="text-[8px] font-mono font-bold text-indigo-400 uppercase tracking-wider block">Plano Contratado</span>
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(client)}
+                              title="Editar Plano de Displays e Registro"
+                              className="text-indigo-400 hover:text-indigo-600 transition p-0.5 cursor-pointer"
+                            >
+                              <Pencil className="w-[11px] h-[11px] hover:scale-110 duration-155" />
+                            </button>
+                          </div>
                           <span className="text-xs font-bold text-indigo-805 block">
                             {(() => {
                               const pl = plans.find(p => p.id === client.planId);

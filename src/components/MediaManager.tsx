@@ -92,7 +92,37 @@ export default function MediaManager() {
   const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('center');
   const [scrollSpeed, setScrollSpeed] = useState<'none' | 'slow' | 'medium' | 'fast'>('none');
 
-  const currentUserId = auth.currentUser?.uid;
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const checkAuth = () => {
+      if (auth.currentUser) {
+        setCurrentUserId(auth.currentUser.uid);
+      } else {
+        if (typeof window !== 'undefined') {
+          try {
+            const saved = localStorage.getItem('vitrion_active_admin');
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              if (parsed && parsed.uid) {
+                setCurrentUserId(parsed.uid);
+                return;
+              }
+            }
+          } catch (e) {
+            console.warn('Error reading active admin from localStorage:', e);
+          }
+        }
+        setCurrentUserId(null);
+      }
+    };
+
+    checkAuth();
+    const unsubscribe = auth.onAuthStateChanged(() => {
+      checkAuth();
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Sync Library
   useEffect(() => {
