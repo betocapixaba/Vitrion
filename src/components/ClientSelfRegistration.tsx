@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, doc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, setDoc, serverTimestamp, onSnapshot, writeBatch } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { VitrionLogo } from './VitrionLogo';
 import { 
   Building, Phone, MessageSquare, MapPin, Mail, Eye, EyeOff, 
   User, Key, Tv, ShieldAlert, CheckCircle, Loader2, ArrowLeft, CheckCircle2
@@ -120,22 +121,53 @@ export default function ClientSelfRegistration({ onClose, onSuccess }: ClientSel
   // Synchronize available active plan layouts
   useEffect(() => {
     const plansRef = collection(db, 'plans');
-    const unsubscribe = onSnapshot(plansRef, (snapshot) => {
-      const list: Plan[] = [];
+    const unsubscribe = onSnapshot(plansRef, async (snapshot) => {
+      let list: Plan[] = [];
       snapshot.forEach((docSnap) => {
         list.push({ id: docSnap.id, ...docSnap.data() } as Plan);
       });
-      // Sort plans by id order
-      list.sort((a, b) => a.id.localeCompare(b.id));
-      
-      // Filter out plans with "em aberto" / null prices
-      const activePlans = list.filter(p => p.price !== null && p.price !== undefined);
-      setPlans(activePlans);
-      
-      if (activePlans.length > 0) {
-        setSelectedPlanId(activePlans[0].id);
+
+      // If plans don't exist in Firestore, initialize them (auto-seeding)
+      if (list.length === 0) {
+        console.log('Seeding plans in SelfRegistration...');
+        const initialPlans: Plan[] = [
+          { id: 'plan_1', name: 'Plano 1', price: null, maxScreens: 1 },
+          { id: 'plan_2', name: 'Plano 2', price: null, maxScreens: 2 },
+          { id: 'plan_3', name: 'Plano 3', price: null, maxScreens: 3 },
+          { id: 'plan_4', name: 'Plano 4', price: null, maxScreens: 5 },
+          { id: 'plan_5', name: 'Plano 5', price: null, maxScreens: 10 },
+          { id: 'plan_6', name: 'Plano 6', price: null, maxScreens: 15 },
+          { id: 'plan_7', name: 'Plano 7', price: null, maxScreens: 30 }
+        ];
+
+        try {
+          const batch = writeBatch(db);
+          initialPlans.forEach((plan) => {
+            const ref = doc(db, 'plans', plan.id);
+            batch.set(ref, {
+              id: plan.id,
+              name: plan.name,
+              price: plan.price,
+              maxScreens: plan.maxScreens,
+              updatedAt: serverTimestamp()
+            });
+          });
+          await batch.commit();
+          // The onSnapshot will fire again with the seeded plans
+        } catch (err) {
+          console.error('Error seeding plans in SelfRegistration:', err);
+          setLoadingPlans(false);
+        }
+      } else {
+        // Sort plans by id order
+        list.sort((a, b) => a.id.localeCompare(b.id));
+        setPlans(list);
+        
+        if (list.length > 0) {
+          setSelectedPlanId(list[0].id);
+        }
+        setLoadingPlans(false);
       }
-      setLoadingPlans(false);
     }, (err) => {
       console.error('Error loading plans in SelfRegistration:', err);
       setLoadingPlans(false);
@@ -281,8 +313,8 @@ export default function ClientSelfRegistration({ onClose, onSuccess }: ClientSel
               <p className="text-[11px] text-slate-400 mt-0.5">Cadastre seu estabelecimento inteligente na rede Vitrion</p>
             </div>
           </div>
-          <div className="w-8 h-8 rounded-lg bg-indigo-600/10 border border-indigo-400/20 flex items-center justify-center text-indigo-400">
-            <Tv className="w-4 h-4" />
+          <div className="w-8 h-8 flex items-center justify-center">
+            <VitrionLogo variant="icon" size="xs" theme="dark" className="w-8 h-8 filter drop-shadow-[0_0_10px_rgba(56,189,248,0.25)]" />
           </div>
         </div>
 
@@ -562,7 +594,11 @@ export default function ClientSelfRegistration({ onClose, onSuccess }: ClientSel
                       </div>
                       <div className="text-right">
                         <span className="text-xs font-mono font-bold text-indigo-400">
-                          R$ {Number(p.price).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}<span className="text-[9px] font-normal text-slate-500 font-sans">/mês</span>
+                          {p.price !== null && p.price !== undefined ? (
+                            <>R$ {Number(p.price).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}<span className="text-[9px] font-normal text-slate-500 font-sans">/mês</span></>
+                          ) : (
+                            <span className="text-[10px] text-amber-500 uppercase font-black tracking-wider">Sob Consulta</span>
+                          )}
                         </span>
                       </div>
                     </button>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot, getDoc, updateDoc, deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
+import { db, auth, handleFirestoreError, OperationType, logAdminAction } from '../lib/firebase';
 import { Screen, Playlist, Asset } from '../types';
 import { 
   Tv, Sparkles, Trash2, ShieldCheck, Play, HelpCircle, AlertCircle,
@@ -24,6 +24,17 @@ export default function ScreenManager() {
   const [editScreenName, setEditScreenName] = useState('');
   const [editScreenClientId, setEditScreenClientId] = useState('');
 
+  // Edit Client states
+  const [isEditClientModalOpen, setIsEditClientModalOpen] = useState(false);
+  const [editingClient, setEditingClient] = useState<any | null>(null);
+  const [editClientEstName, setEditClientEstName] = useState('');
+  const [editClientOwnerName, setEditClientOwnerName] = useState('');
+  const [editClientPhone, setEditClientPhone] = useState('');
+  const [editClientCity, setEditClientCity] = useState('');
+  const [editClientState, setEditClientState] = useState('');
+  const [editClientPlanId, setEditClientPlanId] = useState('');
+  const [editClientVencimento, setEditClientVencimento] = useState('');
+
   // Pairing inputs
   const [pairingOpen, setPairingOpen] = useState(false);
   const [pairingCodeInput, setPairingCodeInput] = useState('');
@@ -34,6 +45,14 @@ export default function ScreenManager() {
 
   // Active simulated screen state
   const [selectedScreenId, setSelectedScreenId] = useState<string | null>(null);
+  const [confirmDeleteScreenId, setConfirmDeleteScreenId] = useState<string | null>(null);
+  const [confirmClientStandbyId, setConfirmClientStandbyId] = useState<string | null>(null);
+  const [confirmClientUnpairAllId, setConfirmClientUnpairAllId] = useState<string | null>(null);
+
+  // Smart TV Simulator State
+  const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
+  const [simulatorClient, setSimulatorClient] = useState<any | null>(null);
+  const [simulatorScreenId, setSimulatorScreenId] = useState<string>('');
   
   // Custom tabs and pricing plans
   const [activeTab, setActiveTab] = useState<'individual' | 'by-client'>('by-client');
@@ -338,7 +357,7 @@ export default function ScreenManager() {
   };
 
   // Change active screen contents
-  const assignContentToScreen = async (screenId: string, contentType: 'idle' | 'asset' | 'playlist', contentId: string) => {
+  const assignContentToScreen = async (screenId: string, contentType: 'idle' | 'asset' | 'playlist' | 'standby' | 'stopped', contentId: string) => {
     try {
       await updateDoc(doc(db, 'screens', screenId), {
         contentType,
@@ -387,8 +406,8 @@ export default function ScreenManager() {
   };
 
   // Permanently delete screen from Firestore database
-  const handleUnpairScreen = async (screenId: string) => {
-    if (!window.confirm('Deseja realmente EXCLUIR este monitor/display permanentemente do sistema? Esta ação apagará o registro da TV no banco de dados.')) return;
+  const handleUnpairScreen = async (screenId: string, skipConfirm = false) => {
+    if (!skipConfirm && !window.confirm('Deseja realmente EXCLUIR este monitor/display permanentemente do sistema? Esta ação apagará o registro da TV no banco de dados.')) return;
     try {
       await deleteDoc(doc(db, 'screens', screenId));
       if (selectedScreenId === screenId) {
@@ -399,13 +418,14 @@ export default function ScreenManager() {
     }
   };
 
-  const handleClientStandby = async (clientId: string) => {
+  const handleClientStandby = async (clientId: string, skipConfirm = false) => {
     const clientScreens = screens.filter(s => s.clientId === clientId);
     if (clientScreens.length === 0) {
-      alert('Nenhuma TV vinculada a este cliente para colocar em standby.');
+      setErrorMsg('Nenhuma TV vinculada a este cliente para colocar em standby.');
+      setTimeout(() => setErrorMsg(''), 4000);
       return;
     }
-    if (!window.confirm('Colocar todas as TVs deste cliente em Standby?')) return;
+    if (!skipConfirm && !window.confirm('Colocar todas as TVs deste cliente em Standby?')) return;
     try {
       for (const screen of clientScreens) {
         await updateDoc(doc(db, 'screens', screen.id), {
@@ -418,13 +438,15 @@ export default function ScreenManager() {
     } catch (err) {
       console.error(err);
       setErrorMsg('Falha ao aplicar standby nas TVs do cliente.');
+      setTimeout(() => setErrorMsg(''), 4000);
     }
   };
 
   const handleClientActive = async (clientId: string) => {
     const clientScreens = screens.filter(s => s.clientId === clientId);
     if (clientScreens.length === 0) {
-      alert('Nenhuma TV vinculada a este cliente.');
+      setErrorMsg('Nenhuma TV vinculada a este cliente.');
+      setTimeout(() => setErrorMsg(''), 4000);
       return;
     }
     try {
@@ -434,21 +456,23 @@ export default function ScreenManager() {
           updatedAt: serverTimestamp()
         });
       }
-      setSuccessMsg('Todas as TVs do cliente foram ativadas e ligadas com sucesso!');
+      setSuccessMsg('Todas as TVs do cliente foram ativas/ligadas com sucesso!');
       setTimeout(() => setSuccessMsg(''), 3000);
     } catch (err) {
       console.error(err);
       setErrorMsg('Falha ao reativar as TVs do cliente.');
+      setTimeout(() => setErrorMsg(''), 4000);
     }
   };
 
-  const handleClientUnpairAll = async (clientId: string) => {
+  const handleClientUnpairAll = async (clientId: string, skipConfirm = false) => {
     const clientScreens = screens.filter(s => s.clientId === clientId);
     if (clientScreens.length === 0) {
-      alert('Nenhuma TV de cliente vinculada.');
+      setErrorMsg('Nenhuma TV de cliente vinculada.');
+      setTimeout(() => setErrorMsg(''), 4000);
       return;
     }
-    if (!window.confirm('Tem certeza que deseja desvincular TODAS as TVs integradas a este cliente? Elas retornarão ao modo de pareamento original.')) return;
+    if (!skipConfirm && !window.confirm('Tem certeza que deseja desvincular TODAS as TVs integradas a este cliente? Elas retornarão ao modo de pareamento original.')) return;
     try {
       for (const screen of clientScreens) {
         await updateDoc(doc(db, 'screens', screen.id), {
@@ -467,6 +491,35 @@ export default function ScreenManager() {
     } catch (err) {
       console.error(err);
       setErrorMsg('Falha ao desvincular as TVs do cliente.');
+      setTimeout(() => setErrorMsg(''), 4000);
+    }
+  };
+
+  const handleCreateVirtualTV = async (clientId: string) => {
+    try {
+      const code = 'VIRT' + Math.floor(10 + Math.random() * 90) + String.fromCharCode(65 + Math.floor(Math.random() * 26)); 
+      const ref = doc(db, 'screens', code);
+      await setDoc(ref, {
+        id: code,
+        name: `TV Simuladora - ${clients.find(c => c.id === clientId)?.establishmentName || 'Cliente'}`,
+        pairingCode: code,
+        status: 'online',
+        lastActive: serverTimestamp(),
+        contentType: 'idle',
+        contentId: '',
+        pairedAt: serverTimestamp(),
+        ownerId: 'admin_simulation',
+        clientId: clientId,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      setSuccessMsg('Smart TV Virtual criada e pareada com sucesso!');
+      setTimeout(() => setSuccessMsg(''), 3000);
+      setSimulatorScreenId(code);
+    } catch (err) {
+      console.error('Error creating virtual screen:', err);
+      setErrorMsg('Falha ao instanciar TV virtual.');
+      setTimeout(() => setErrorMsg(''), 4000);
     }
   };
 
@@ -508,6 +561,38 @@ export default function ScreenManager() {
     }
   };
 
+  const handleSaveClientDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingClient) return;
+    try {
+      const ref = doc(db, 'clients', editingClient.id);
+      await updateDoc(ref, {
+        establishmentName: editClientEstName.trim(),
+        name: editClientOwnerName.trim(),
+        phone: editClientPhone.trim(),
+        city: editClientCity.trim(),
+        state: editClientState.trim().toUpperCase(),
+        planId: editClientPlanId,
+        vencimento: editClientVencimento.trim(),
+        updatedAt: serverTimestamp(),
+      });
+      setSuccessMsg(`Cadastro de "${editClientEstName.trim()}" atualizado com sucesso!`);
+      setIsEditClientModalOpen(false);
+      setEditingClient(null);
+      setTimeout(() => setSuccessMsg(''), 2500);
+
+      await logAdminAction(
+        'UPDATE_CLIENT_QUICK', 
+        `Cliente: ${editClientEstName.trim()}`, 
+        `Atualizou dados cadastrais (rápido) do estabelecimento na Central de Distribuição.`
+      );
+    } catch (err) {
+      console.error(err);
+      setErrorMsg('Falha ao atualizar o cadastro do cliente.');
+      setTimeout(() => setErrorMsg(''), 4000);
+    }
+  };
+
   const filteredScreens = screens.filter((screen) => {
     const term = searchTerm.toLowerCase();
     const client = clients.find((c) => c.id === screen.clientId);
@@ -544,18 +629,7 @@ export default function ScreenManager() {
     );
   });
 
-  const unassignedScreens = screens.filter((s) => !s.clientId);
-  const filteredUnassignedScreens = unassignedScreens.filter((screen) => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-    const pairDateFormatted = formatFullDateTime(screen.pairedAt || screen.createdAt).toLowerCase();
-    return (
-      screen.name.toLowerCase().includes(term) ||
-      screen.pairingCode.toLowerCase().includes(term) ||
-      screen.id.toLowerCase().includes(term) ||
-      pairDateFormatted.includes(term)
-    );
-  });
+
 
   return (
     <div className="space-y-6">
@@ -900,17 +974,45 @@ export default function ScreenManager() {
                             >
                               <Pencil className="w-4 h-4" />
                             </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleUnpairScreen(screen.id);
-                              }}
-                              className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-slate-100 rounded transition shrink-0"
-                              title="Excluir Monitor Permanentemente"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {confirmDeleteScreenId === screen.id ? (
+                              <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 bg-red-50 border border-red-200 rounded-lg p-0.5 h-8 animate-fade-in z-10 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleUnpairScreen(screen.id, true);
+                                    setConfirmDeleteScreenId(null);
+                                  }}
+                                  className="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-black uppercase transition cursor-pointer"
+                                  title="Confirmar Exclusão"
+                                >
+                                  Sim
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setConfirmDeleteScreenId(null);
+                                  }}
+                                  className="px-2 py-0.5 bg-slate-200 hover:bg-slate-350 text-slate-700 rounded text-[10px] font-bold uppercase transition cursor-pointer"
+                                  title="Cancelar"
+                                >
+                                  Não
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setConfirmDeleteScreenId(screen.id);
+                                }}
+                                className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-slate-100 rounded transition shrink-0"
+                                title="Excluir Monitor Permanentemente"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </div>
                         </div>
 
@@ -972,12 +1074,12 @@ export default function ScreenManager() {
                 <span className="block text-xs font-semibold text-slate-700">🏢 Painel de Controle de TVs por Cliente ({filteredClients.length})</span>
               </div>
 
-              {filteredClients.length === 0 && filteredUnassignedScreens.length === 0 ? (
+              {filteredClients.length === 0 ? (
                 <div className="text-center py-16 bg-white rounded-xl border border-dashed border-slate-300">
                   <Building className="w-10 h-10 text-slate-350 mx-auto mb-3" />
                   <h4 className="text-sm font-bold text-slate-700 font-sans">Nenhum Registro Encontrado</h4>
                   <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1 leading-relaxed font-sans">
-                    Não encontramos clientes ou TVs avulsas que correspondam aos filtros de pesquisa ativos.
+                    Não encontramos clientes que correspondam aos filtros de pesquisa ativos.
                   </p>
                 </div>
               ) : (
@@ -1010,6 +1112,25 @@ export default function ScreenManager() {
                                 <h4 className="text-sm font-bold text-slate-800 leading-snug">
                                   {client.establishmentName}
                                 </h4>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingClient(client);
+                                    setEditClientEstName(client.establishmentName || '');
+                                    setEditClientOwnerName(client.name || '');
+                                    setEditClientPhone(client.phone || '');
+                                    setEditClientCity(client.city || '');
+                                    setEditClientState(client.state || '');
+                                    setEditClientPlanId(client.planId || '');
+                                    setEditClientVencimento(client.vencimento || '');
+                                    setIsEditClientModalOpen(true);
+                                  }}
+                                  className="p-1 hover:bg-slate-200 hover:text-indigo-650 text-slate-400 rounded transition cursor-pointer"
+                                  title="Editar Estabelecimento Comercial / Cliente"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
                                 <span className="text-[10px] font-semibold text-slate-550 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
                                   {client.city} - {client.state}
                                 </span>
@@ -1045,33 +1166,98 @@ export default function ScreenManager() {
                             </div>
 
                             <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => handleClientActive(client.id)}
-                                disabled={clientScreens.length === 0}
-                                className="px-2.5 py-1.5 bg-emerald-550 hover:bg-emerald-600 text-white disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed font-extrabold text-[9.5px] tracking-wider rounded-lg transition-all border border-emerald-600 cursor-pointer shadow-xxs"
-                                title="Ligar todas as TVs deste cliente"
-                              >
-                                🚀 LIGAR TUDO
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleClientStandby(client.id)}
-                                disabled={clientScreens.length === 0}
-                                className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 disabled:opacity-50 disabled:cursor-not-allowed border border-amber-200 font-extrabold text-[9.5px] tracking-wider rounded-lg transition-all cursor-pointer shadow-xxs"
-                                title="Standby para todas as TVs"
-                              >
-                                💤 STANDBY
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleClientUnpairAll(client.id)}
-                                disabled={clientScreens.length === 0}
-                                className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 disabled:opacity-50 disabled:cursor-not-allowed border border-red-200 font-extrabold text-[9.5px] tracking-wider rounded-lg transition-all cursor-pointer shadow-xxs"
-                                title="Desvincular todas as TVs deste cliente"
-                              >
-                                🚨 REMOVER TUDO
-                              </button>
+                              {confirmClientStandbyId === client.id ? (
+                                <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg h-8 animate-fade-in text-[10.5px] font-bold text-amber-850">
+                                  <span>Confirmar Standby de {clientScreens.length} TV(s)?</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleClientStandby(client.id, true);
+                                      setConfirmClientStandbyId(null);
+                                    }}
+                                    className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-extrabold uppercase text-[10px] cursor-pointer"
+                                  >
+                                    Sim
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmClientStandbyId(null)}
+                                    className="px-2 py-0.5 bg-slate-200 hover:bg-slate-355 text-slate-700 rounded font-bold uppercase text-[10px] cursor-pointer"
+                                  >
+                                    Não
+                                  </button>
+                               </div>
+                              ) : confirmClientUnpairAllId === client.id ? (
+                                <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5 bg-red-50 border border-red-200 px-2.5 py-1 rounded-lg h-8 animate-fade-in text-[10.5px] font-bold text-red-850">
+                                  <span>Desvincular TODAS as {clientScreens.length} TV(s)?</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleClientUnpairAll(client.id, true);
+                                      setConfirmClientUnpairAllId(null);
+                                    }}
+                                    className="px-2 py-0.5 bg-red-650 hover:bg-red-750 text-white rounded font-extrabold uppercase text-[10px] cursor-pointer"
+                                  >
+                                    Remover
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmClientUnpairAllId(null)}
+                                    className="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded font-bold uppercase text-[10px] cursor-pointer"
+                                  >
+                                    Não
+                                  </button>
+                                </div>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSimulatorClient(client);
+                                      const firstScr = clientScreens[0];
+                                      setSimulatorScreenId(firstScr ? firstScr.id : '');
+                                      setIsSimulatorOpen(true);
+                                    }}
+                                    className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-[9.5px] tracking-wider rounded-lg transition-all cursor-pointer shadow-xxs flex items-center gap-1 shrink-0"
+                                    title="Abrir Simulador de Smart TV Inteligente em Tempo Real para este Cliente"
+                                  >
+                                    🖥️ SIMULAR SMART TV
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleClientActive(client.id)}
+                                    disabled={clientScreens.length === 0}
+                                    className="px-2.5 py-1.5 bg-emerald-550 hover:bg-emerald-600 text-white disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed font-extrabold text-[9.5px] tracking-wider rounded-lg transition-all border border-emerald-600 cursor-pointer shadow-xxs"
+                                    title="Ligar todas as TVs deste cliente"
+                                  >
+                                    🚀 LIGAR TUDO
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setConfirmClientStandbyId(client.id);
+                                      setConfirmClientUnpairAllId(null);
+                                    }}
+                                    disabled={clientScreens.length === 0}
+                                    className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 disabled:opacity-50 disabled:cursor-not-allowed border border-amber-200 font-extrabold text-[9.5px] tracking-wider rounded-lg transition-all cursor-pointer shadow-xxs"
+                                    title="Standby para todas as TVs"
+                                  >
+                                    💤 STANDBY
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setConfirmClientUnpairAllId(client.id);
+                                      setConfirmClientStandbyId(null);
+                                    }}
+                                    disabled={clientScreens.length === 0}
+                                    className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 disabled:opacity-50 disabled:cursor-not-allowed border border-red-200 font-extrabold text-[9.5px] tracking-wider rounded-lg transition-all cursor-pointer shadow-xxs"
+                                    title="Desvincular todas as TVs deste cliente"
+                                  >
+                                    🚨 REMOVER TUDO
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1189,33 +1375,61 @@ export default function ScreenManager() {
                                       </select>
 
                                       {/* Pencil (Edit) & Trash (Unpair) buttons */}
-                                      <div className="flex items-center gap-0.5 bg-white border border-slate-150 rounded-lg p-0.5 h-8">
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setEditingScreen(scr);
-                                            setEditScreenName(scr.name);
-                                            setEditScreenClientId(scr.clientId || '');
-                                            setIsEditModalOpen(true);
-                                          }}
-                                          className="p-1 text-slate-400 hover:text-indigo-650 hover:bg-slate-50 rounded transition"
-                                          title="Editar TV e Proprietário"
-                                        >
-                                          <Pencil className="w-3.5 h-3.5" />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleUnpairScreen(scr.id);
-                                          }}
-                                          className="p-1 text-slate-400 hover:text-red-500 hover:bg-slate-50 rounded transition"
-                                          title="Excluir Monitor Permanentemente"
-                                        >
-                                          <Trash2 className="w-3.5 h-3.5" />
-                                        </button>
-                                      </div>
+                                      {confirmDeleteScreenId === scr.id ? (
+                                        <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 bg-red-50 border border-red-200 rounded-lg p-0.5 h-8 animate-fade-in z-10 shrink-0">
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleUnpairScreen(scr.id, true);
+                                              setConfirmDeleteScreenId(null);
+                                            }}
+                                            className="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-black uppercase transition cursor-pointer"
+                                            title="Confirmar Exclusão"
+                                          >
+                                            Sim
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setConfirmDeleteScreenId(null);
+                                            }}
+                                            className="px-2 py-0.5 bg-slate-200 hover:bg-slate-350 text-slate-700 rounded text-[10px] font-bold uppercase transition cursor-pointer"
+                                            title="Cancelar"
+                                          >
+                                            Não
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-center gap-0.5 bg-white border border-slate-150 rounded-lg p-0.5 h-8">
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setEditingScreen(scr);
+                                              setEditScreenName(scr.name);
+                                              setEditScreenClientId(scr.clientId || '');
+                                              setIsEditModalOpen(true);
+                                            }}
+                                            className="p-1 text-slate-400 hover:text-indigo-650 hover:bg-slate-50 rounded transition"
+                                            title="Editar TV e Proprietário"
+                                          >
+                                            <Pencil className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setConfirmDeleteScreenId(scr.id);
+                                            }}
+                                            className="p-1 text-slate-400 hover:text-red-500 hover:bg-slate-50 rounded transition"
+                                            title="Excluir Monitor Permanentemente"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                 );
@@ -1227,169 +1441,7 @@ export default function ScreenManager() {
                     );
                   })}
 
-                  {/* Section for Unassigned Displays / Telas Avulsas */}
-                  {filteredUnassignedScreens.length > 0 && (
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl overflow-hidden shadow-xs mt-6">
-                      <div className="bg-slate-100/60 p-4 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div className="flex items-start gap-3">
-                          <div className="p-2 bg-slate-200 border border-slate-300 text-slate-650 rounded-lg shrink-0 mt-0.5">
-                            <HelpCircle className="w-4.5 h-4.5" />
-                          </div>
-                          <div>
-                            <h3 className="text-sm font-bold text-slate-800">
-                              🌐 Telas Avulsas / Sem Cliente Associado
-                            </h3>
-                            <p className="text-xs text-slate-500 mt-0.5">
-                              Estes reprodutores estão sintonizados e ativos, mas não foram vinculados a um estabelecimento ou cliente específico.
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-[11px] font-semibold text-slate-600 bg-slate-200 px-2.5 py-1 rounded-md">
-                          Total Avulsas: <span className="font-extrabold text-slate-800">{filteredUnassignedScreens.length}</span>
-                        </div>
-                      </div>
 
-                      <div className="p-4 bg-white divide-y divide-slate-100 space-y-2">
-                        {filteredUnassignedScreens.map((scr) => {
-                          const isSelected = selectedScreenId === scr.id;
-                          let online = false;
-                          if (scr.lastActive) {
-                            const lastMs = scr.lastActive.seconds * 1000;
-                            online = (Date.now() - lastMs) / 1000 < 65;
-                          }
-
-                          return (
-                            <div
-                              key={scr.id}
-                              onClick={() => setSelectedScreenId(scr.id)}
-                              className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all cursor-pointer ${
-                                isSelected 
-                                  ? 'border-indigo-650 bg-indigo-50/15 font-semibold text-indigo-950 ring-1 ring-indigo-150 shadow-xxs'
-                                  : 'border-slate-100 bg-slate-50/30 hover:border-slate-250 hover:bg-slate-50 shadow-3xs'
-                              }`}
-                            >
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className={`w-2 h-2 rounded-full shrink-0 ${online ? 'bg-emerald-500 animate-pulse' : 'bg-slate-350'}`} />
-                                  <span className="text-[11.5px] font-extrabold text-slate-700 truncate block">{scr.name}</span>
-                                  <span className="text-[9.5px] font-mono font-bold bg-white text-slate-650 border border-slate-250 px-1.5 py-0.2 rounded shrink-0">
-                                    CÓD: {scr.pairingCode}
-                                  </span>
-                                  <a
-                                    href={`/?mode=player&screenId=${scr.id}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="text-[10px] text-indigo-650 hover:underline font-extrabold flex items-center gap-0.5"
-                                    title="Abrir reprodutor de Smart TV simulado em outra aba"
-                                  >
-                                    <ExternalLink className="w-2.5 h-2.5" /> Player Remoto
-                                  </a>
-                                </div>
-                                
-                                <div className="flex items-center gap-1.5 leading-none mt-1.5 text-[10.5px] text-slate-550">
-                                  <span className="font-bold text-slate-400 uppercase text-[9px] tracking-wider shrink-0">Status Ativo:</span>
-                                  <span className="font-semibold text-slate-700 truncate max-w-xs md:max-w-md bg-slate-100 hover:bg-slate-250 px-2 py-0.5 border border-slate-200 rounded-md">
-                                    {scr.contentType === 'idle' && 'Ocioso (Sem programação)'}
-                                    {scr.contentType === 'standby' && 'Standby / Descanso 💤'}
-                                    {scr.contentType === 'stopped' && 'Desligado / Sem Transmissão 🛑'}
-                                    {scr.contentType === 'asset' && `Vídeo/Imagem: ${assets.find(a=>a.id===scr.contentId)?.name || 'Carregando'}`}
-                                    {scr.contentType === 'playlist' && `🔁 Playlist: ${playlists.find(a=>a.id===scr.contentId)?.name || 'Carregando'}`}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 select-none">
-                                {/* On/Off Switch for power control */}
-                                <div className="flex items-center gap-1 bg-white border border-slate-150 px-2 py-0.5 rounded-lg h-8">
-                                  <span className={`text-[9.5px] font-black tracking-wider ${scr.contentType !== 'stopped' ? 'text-emerald-600' : 'text-slate-400'}`}>
-                                    {scr.contentType !== 'stopped' ? 'LIG' : 'DES'}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleTogglePower(scr.id, scr.contentType, scr.contentId);
-                                    }}
-                                    className={`w-7.5 h-4.5 rounded-full p-0.5 transition-colors duration-250 cursor-pointer flex items-center ${
-                                      scr.contentType !== 'stopped' ? 'bg-emerald-500' : 'bg-slate-300'
-                                    }`}
-                                    title={scr.contentType !== 'stopped' ? 'Desligar Exibição' : 'Ligar Exibição'}
-                                  >
-                                    <div
-                                      className={`bg-white w-3.5 h-3.5 rounded-full shadow-xs transform transition-transform duration-250 ${
-                                        scr.contentType !== 'stopped' ? 'translate-x-3' : 'translate-x-0'
-                                      }`}
-                                    />
-                                  </button>
-                                </div>
-
-                                {/* Content dropdown */}
-                                <select
-                                  value={`${scr.contentType}:${scr.contentId}`}
-                                  onClick={(e) => e.stopPropagation()} 
-                                  onChange={(e) => {
-                                    const [cType, cId] = e.target.value.split(':');
-                                    assignContentToScreen(scr.id, cType as any, cId);
-                                  }}
-                                  className="px-2 py-1 bg-white border border-slate-200 text-slate-700 rounded-lg text-xs font-bold leading-tight outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer h-8 max-w-[140px] md:max-w-[180px]"
-                                >
-                                  <option value="idle:">Ocioso</option>
-                                  <option value="standby:">Standby</option>
-                                  <option value="stopped:">Desligado 🛑</option>
-                                  <optgroup label="📋 Playlists">
-                                    {playlists.map((p) => (
-                                      <option key={p.id} value={`playlist:${p.id}`}>
-                                        🔁 {p.name}
-                                      </option>
-                                    ))}
-                                  </optgroup>
-                                  <optgroup label="🎯 Mídias">
-                                    {assets
-                                      .filter((a) => !a.clientId)
-                                      .map((a) => (
-                                        <option key={a.id} value={`asset:${a.id}`}>
-                                          📺 {a.name}
-                                        </option>
-                                      ))}
-                                  </optgroup>
-                                </select>
-
-                                {/* Standard Edit / Unpair controls */}
-                                <div className="flex items-center gap-0.5 bg-white border border-slate-150 rounded-lg p-0.5 h-8">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setEditingScreen(scr);
-                                      setEditScreenName(scr.name);
-                                      setEditScreenClientId(scr.clientId || '');
-                                      setIsEditModalOpen(true);
-                                    }}
-                                    className="p-1 text-slate-400 hover:text-indigo-650 hover:bg-slate-50 rounded transition"
-                                    title="Editar TV e Associar"
-                                  >
-                                    <Pencil className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleUnpairScreen(scr.id);
-                                    }}
-                                    className="p-1 text-slate-400 hover:text-red-500 hover:bg-slate-50 rounded transition"
-                                    title="Excluir Monitor Permanentemente"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -1628,6 +1680,449 @@ export default function ScreenManager() {
                 </button>
               </div>
             </form>
+
+          </div>
+        </div>
+      )}
+
+      {/* Client Quick Editor Modal Panel Dialog */}
+      {isEditClientModalOpen && editingClient && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          {/* ... edit client contents are retained ... */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden animate-scale-up select-none">
+            
+            <header className="p-5 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-150 flex items-center justify-center text-indigo-600">
+                  <Building className="w-4.5 h-4.5" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">Editar Estabelecimento</h3>
+                  <p className="text-[10px] text-slate-400">Atualize os dados e plano contratado do cliente.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setIsEditClientModalOpen(false); setEditingClient(null); }}
+                className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-4.5 h-4.5" />
+              </button>
+            </header>
+
+            <form onSubmit={handleSaveClientDetails} className="p-6 space-y-4">
+              {/* Nome do Estabelecimento */}
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Nome do Estabelecimento *</label>
+                <input
+                  type="text"
+                  required
+                  value={editClientEstName}
+                  onChange={(e) => setEditClientEstName(e.target.value)}
+                  className="w-full bg-white border border-slate-250 focus:border-indigo-500 rounded-lg px-3 py-2 text-xs text-slate-700 outline-none transition"
+                />
+              </div>
+
+              {/* Nome do Responsável */}
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Nome do Responsável *</label>
+                <input
+                  type="text"
+                  required
+                  value={editClientOwnerName}
+                  onChange={(e) => setEditClientOwnerName(e.target.value)}
+                  className="w-full bg-white border border-slate-250 focus:border-indigo-500 rounded-lg px-3 py-2 text-xs text-slate-700 outline-none transition"
+                />
+              </div>
+
+              {/* Telefone Responsável */}
+              <div className="space-y-1">
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Telefone Comercial *</label>
+                <input
+                  type="text"
+                  required
+                  value={editClientPhone}
+                  onChange={(e) => setEditClientPhone(e.target.value)}
+                  className="w-full bg-white border border-slate-250 focus:border-indigo-500 rounded-lg px-3 py-2 text-xs text-slate-700 outline-none transition"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {/* Cidade */}
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Cidade *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editClientCity}
+                    onChange={(e) => setEditClientCity(e.target.value)}
+                    className="w-full bg-white border border-slate-250 focus:border-indigo-500 rounded-lg px-3 py-2 text-xs text-slate-700 outline-none transition"
+                  />
+                </div>
+                {/* Estado */}
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Estado (UF) *</label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={2}
+                    value={editClientState}
+                    onChange={(e) => setEditClientState(e.target.value)}
+                    className="w-full bg-white border border-slate-250 focus:border-indigo-500 rounded-lg px-3 py-2 text-xs text-slate-700 outline-none transition uppercase"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {/* Plano */}
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Plano Comercial *</label>
+                  <select
+                    value={editClientPlanId}
+                    onChange={(e) => setEditClientPlanId(e.target.value)}
+                    className="w-full bg-white border border-slate-250 focus:border-indigo-500 rounded-lg px-3 py-2 text-[11px] text-slate-700 outline-none transition"
+                  >
+                    <option value="">-- Sem Plano --</option>
+                    {plans.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} (Max: {p.maxScreens})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {/* Vencimento */}
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Vencimento *</label>
+                  <input
+                    type="date"
+                    required
+                    value={editClientVencimento}
+                    onChange={(e) => setEditClientVencimento(e.target.value)}
+                    className="w-full bg-white border border-slate-250 focus:border-indigo-500 rounded-lg px-3 py-2 text-xs text-slate-700 outline-none transition"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2 justify-end border-t border-slate-100 pt-4 mt-6">
+                <button
+                  type="button"
+                  onClick={() => { setIsEditClientModalOpen(false); setEditingClient(null); }}
+                  className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg text-xs font-semibold cursor-pointer transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold cursor-pointer transition shadow-xs hover:shadow-sm"
+                >
+                  Salvar Alterações
+                </button>
+              </div>
+            </form>
+
+          </div>
+        </div>
+      )}
+
+      {/* Real-time Smart TV Simulator Modal Dialog */}
+      {isSimulatorOpen && simulatorClient && (
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in text-white select-none">
+          <div className="bg-slate-905 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden animate-scale-up flex flex-col h-[90vh] md:h-auto md:max-h-[85vh]">
+            
+            {/* Modal Header */}
+            <header className="p-4 border-b border-slate-800 flex items-center justify-between shrink-0 bg-slate-950/40">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-650/10 border border-indigo-500/20 flex items-center justify-center text-indigo-450">
+                  <Tv className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold tracking-tight">Vitrion Smart TV Simulator</h3>
+                  <p className="text-[10.5px] text-slate-400 font-medium select-text">
+                    Estabelecimento: <strong className="text-indigo-400">{simulatorClient.establishmentName}</strong>
+                  </p>
+                </div>
+              </div>
+              
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSimulatorOpen(false);
+                  setSimulatorClient(null);
+                  setSimulatorScreenId('');
+                }}
+                className="p-1.5 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </header>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 md:grid md:grid-cols-12 gap-6 space-y-6 md:space-y-0 bg-slate-900">
+              
+              {/* Left Column (Virtual TV Frame) */}
+              <div className="md:col-span-7 flex flex-col justify-center items-center">
+                <div className="w-full text-center mb-2 flex items-center justify-between px-1">
+                  <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 font-mono">
+                    SAÍDA DO DISPLAY DIGITAL EM TEMPO REAL
+                  </span>
+                  {simulatorScreenId && (
+                    <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/15 font-mono px-2 py-0.5 rounded-full font-bold uppercase animate-pulse">
+                      Status: Transmitindo
+                    </span>
+                  )}
+                </div>
+
+                <div className="w-full relative py-4 px-2 flex flex-col justify-center items-center">
+                  {/* Glowing LED backlighting */}
+                  <div className="absolute inset-0 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none scale-75 animate-pulse" />
+
+                  {/* Physical Bezel structure resembling a physical commercial display */}
+                  <div className="w-full aspect-video bg-black border-8 border-slate-950 rounded-2xl shadow-2xl relative overflow-hidden flex flex-col justify-between">
+                    {/* Top glass reflection */}
+                    <div className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/5 to-transparent pointer-events-none z-10" />
+
+                    {simulatorScreenId ? (
+                      <iframe
+                        src={`/?mode=player&screenId=${simulatorScreenId}`}
+                        title="Vitrion Smart TV Simulator Canvas"
+                        className="w-full h-full border-0 select-none pointer-events-auto bg-slate-950"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center p-8 text-center text-slate-400">
+                        <Monitor className="w-12 h-12 text-slate-700 mb-3 animate-pulse" />
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">Nenhuma TV Sintonizada</h4>
+                        <p className="text-[10.5px] text-slate-500 max-w-xs mt-1.5 leading-relaxed font-sans">
+                          Este cliente não possui nenhuma TV pareada no momento. Para iniciar a simulação, clique no botão abaixo para gerar uma TV virtual.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => handleCreateVirtualTV(simulatorClient.id)}
+                          className="mt-4 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-bold uppercase transition flex items-center gap-1.5 shadow-md cursor-pointer"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          Parear TV Virtual de Testes
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="absolute bottom-1 right-2 z-20 text-[6px] text-white/20 uppercase tracking-widest font-mono">
+                      VITRION OS PLAYER v2.4
+                    </div>
+                  </div>
+
+                  {/* TV Stand Base */}
+                  <div className="w-16 h-3 bg-slate-950 rounded-t-xl z-0 shadow-md relative" />
+                  <div className="w-32 h-1 bg-slate-950 rounded-full z-0 shadow-inner" />
+                </div>
+
+                {simulatorScreenId && (
+                  <div className="text-center mt-3 text-[10px] text-slate-400 font-mono">
+                    Smart TV ID: <strong className="text-indigo-400 select-all">{simulatorScreenId}</strong> • Conectado à Firebase Firestore
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column (Controls & Infrared Remote Simulator) */}
+              <div className="md:col-span-5 flex flex-col justify-between gap-5 border-t md:border-t-0 md:border-l border-slate-800 pt-6 md:pt-0 md:pl-6 bg-slate-900">
+                
+                {/* 1. TV Screen selector dropdown list */}
+                <div className="space-y-2 bg-slate-950/40 p-4 rounded-xl border border-slate-800">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    Selecione qual TV Monitor simular:
+                  </label>
+                  <div className="flex gap-2">
+                    <select
+                      value={simulatorScreenId}
+                      onChange={(e) => setSimulatorScreenId(e.target.value)}
+                      className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-505 cursor-pointer max-w-[200px] md:max-w-none text-ellipsis"
+                    >
+                      <option value="">-- Escolha uma TV do Cliente --</option>
+                      {screens
+                        .filter((s) => s.clientId === simulatorClient.id)
+                        .map((s) => (
+                          <option key={s.id} value={s.id}>
+                            📺 {s.name} (Cód: {s.pairingCode})
+                          </option>
+                        ))}
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={() => handleCreateVirtualTV(simulatorClient.id)}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 hover:text-white text-indigo-400 border border-slate-700/60 rounded-lg text-[10px] font-bold uppercase transition flex items-center gap-1 cursor-pointer shrink-0"
+                      title="Parear uma nova TV virtual de testes para este cliente"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      + CRIAR
+                    </button>
+                  </div>
+                </div>
+
+                {simulatorScreenId ? (
+                  <>
+                    {/* 2. Media Quick Sintonizer */}
+                    <div className="space-y-3 p-4 bg-slate-950/20 rounded-xl border border-slate-850">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">
+                          Sintonizar Conteúdo:
+                        </span>
+                        <span className="text-[9px] text-slate-500 font-mono">Clique para aplicar</span>
+                      </div>
+
+                      <div className="space-y-3 max-h-[160px] overflow-y-auto pr-1">
+                        {/* List available playlists */}
+                        {playlists.length > 0 && (
+                          <div className="space-y-1">
+                            <span className="text-[8px] text-slate-400 uppercase font-black tracking-wider block">📋 Playlists Comerciais</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {playlists.map((p) => (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  onClick={() => assignContentToScreen(simulatorScreenId, 'playlist', p.id)}
+                                  className="px-2 py-1 bg-indigo-950/40 hover:bg-indigo-900/60 border border-indigo-500/20 hover:border-indigo-500 text-indigo-300 hover:text-white rounded text-[9px] font-extrabold flex items-center gap-0.5 cursor-pointer transition shrink-0"
+                                >
+                                  🔁 {p.name}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* List available Assets */}
+                        {assets.length > 0 && (
+                          <div className="space-y-1">
+                            <span className="text-[8px] text-slate-400 uppercase font-black tracking-wider block">🎯 Biblioteca de Mídias Ativas</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {assets.map((a) => (
+                                <button
+                                  key={a.id}
+                                  type="button"
+                                  onClick={() => assignContentToScreen(simulatorScreenId, 'asset', a.id)}
+                                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 hover:border-slate-650 rounded text-[9px] font-bold flex items-center gap-1 cursor-pointer transition shrink-0"
+                                >
+                                  <span>{a.type === 'video' ? '🎬' : '📷'}</span>
+                                  <span>{a.name}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 3. Remote Control */}
+                    <div className="flex bg-slate-950 rounded-2xl p-4 border border-slate-800 items-center justify-between shadow-lg">
+                      <div className="space-y-1 pr-2 flex-1">
+                        <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest bg-indigo-550/10 px-2 py-0.5 rounded border border-indigo-500/15 inline-block">
+                          Controle Remoto Simulador
+                        </span>
+                        <h4 className="text-xs font-bold text-slate-200">IR Remote v2</h4>
+                        <p className="text-[9px] text-slate-400 leading-relaxed font-sans mt-1">
+                          Pressione os botões do controle ao lado para disparar ações diretas na smart TV via Firestore.
+                        </p>
+                      </div>
+
+                      {/* Remote Hardware Body Casing */}
+                      <div className="w-[105px] bg-slate-900 border border-slate-800 p-2 rounded-2xl flex flex-col items-center gap-2.5 shadow-xl shrink-0">
+                        
+                        <div className="flex items-center justify-between w-full px-1">
+                          {/* Red Power Button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const scr = screens.find(s => s.id === simulatorScreenId);
+                              if (scr) {
+                                handleTogglePower(simulatorScreenId, scr.contentType, scr.contentId);
+                              }
+                            }}
+                            className="w-7 h-7 bg-red-650 hover:bg-red-550 text-white rounded-full flex items-center justify-center cursor-pointer transition shadow-xl"
+                            title="Ligar ou Desligar Monitor"
+                          >
+                            <Power className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Standby moon button */}
+                          <button
+                            type="button"
+                            onClick={() => assignContentToScreen(simulatorScreenId, 'standby', '')}
+                            className="w-7 h-7 bg-amber-500/15 hover:bg-amber-500/30 text-amber-400 rounded-full flex items-center justify-center cursor-pointer transition"
+                            title="Entrar em Modo Standby (Logo)"
+                          >
+                            💤
+                          </button>
+                        </div>
+
+                        {/* Physical D-Pad Circle */}
+                        <div className="w-16 h-16 rounded-full bg-slate-950 border border-slate-800 flex items-center justify-center relative shadow-inner">
+                          <button
+                            type="button"
+                            onClick={() => assignContentToScreen(simulatorScreenId, 'idle', '')}
+                            className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center text-[9px] font-mono font-black shadow-md cursor-pointer transition border border-slate-700"
+                            title="Parar / Resetar ao Ocioso"
+                          >
+                            OK
+                          </button>
+                          
+                          <span className="absolute top-0.5 text-[7px] text-slate-600">▲</span>
+                          <span className="absolute bottom-0.5 text-[7px] text-slate-600">▼</span>
+                          <span className="absolute left-1 text-[7px] text-slate-600">◀</span>
+                          <span className="absolute right-1 text-[7px] text-slate-600">▶</span>
+                        </div>
+
+                        {/* Lower layout button panel for decoration */}
+                        <div className="grid grid-cols-2 gap-1 w-full">
+                          <button
+                            type="button"
+                            onClick={() => assignContentToScreen(simulatorScreenId, 'idle', '')}
+                            className="py-1 px-1.5 bg-slate-800 hover:bg-slate-750 text-slate-350 rounded text-[8px] font-bold uppercase transition"
+                            title="Zerar exibição"
+                          >
+                            Ocioso
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const scr = screens.find(s => s.id === simulatorScreenId);
+                              if (scr) {
+                                assignContentToScreen(simulatorScreenId, scr.contentType, scr.contentId);
+                              }
+                            }}
+                            className="py-1 px-1.5 bg-slate-800 hover:bg-slate-750 text-slate-350 rounded text-[8px] font-bold uppercase transition"
+                            title="Sincronizar Monitor"
+                          >
+                            Sync
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex-1 flex flex-col justify-center items-center text-slate-500 py-12 text-center text-[10.5px] font-sans">
+                    <Monitor className="w-8 h-8 text-slate-700 mb-2 animate-bounce" />
+                    <span>Selecione um monitor acima para carregar o feed do player, e liberar o sintonizador rápido e controle remoto.</span>
+                  </div>
+                )}
+
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <footer className="p-3 bg-slate-950 shrink-0 text-center border-t border-slate-800 text-[10px] text-slate-500 flex justify-between px-6 items-center">
+              <span>Para rodar o player em tela cheia no dispositivo real, pegue o código da TV na lista e use o modo Parear Player.</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSimulatorOpen(false);
+                  setSimulatorClient(null);
+                  setSimulatorScreenId('');
+                }}
+                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-[10px] font-extrabold uppercase transition cursor-pointer"
+              >
+                Fechar Simulador
+              </button>
+            </footer>
 
           </div>
         </div>

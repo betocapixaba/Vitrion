@@ -13,12 +13,13 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
+import { VitrionLogo } from './VitrionLogo';
 import { Client, Screen, Asset, Playlist, PlaylistItem } from '../types';
 import { 
   Tv, Layers, LogOut, CheckCircle2, AlertCircle, Plus, Trash2, 
   RefreshCw, Copy, ExternalLink, Image as ImageIcon, MapPin, 
   Check, Play, X, Sliders, Info, ShoppingBag, ListPlus, ArrowUp, ArrowDown, FolderHeart, Save, Sparkles, Film,
-  Monitor, Loader2
+  Monitor, Loader2, Power
 } from 'lucide-react';
 
 // Error monitoring based on firebase-integration skill
@@ -107,6 +108,11 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
   const [fileType, setFileType] = useState<'image' | 'video'>('image');
 
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // Smart TV Simulator Modal State
+  const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
+  const [simulatorScreenId, setSimulatorScreenId] = useState<string>('');
 
   // Live client and plan subscription states
   const [currentClient, setCurrentClient] = useState<Client>(client);
@@ -379,10 +385,6 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
 
   // Remove screen/display
   const handleRemoveDisplay = async (screenId: string, screenName: string) => {
-    if (!window.confirm(`Deseja realmente excluir e remover o display "${screenName}" permanentemente? Esta ação apagará o monitor do sistema.`)) {
-      return;
-    }
-
     setErrorMsg('');
     setSuccessMsg('');
 
@@ -394,6 +396,80 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
     } catch (err: any) {
       console.error(err);
       setErrorMsg('Falha ao remover o display.');
+    }
+  };
+
+  const handleCreateVirtualTV = async () => {
+    try {
+      const code = 'VIRT' + Math.floor(10 + Math.random() * 90) + String.fromCharCode(65 + Math.floor(Math.random() * 26)); 
+      const ref = doc(db, 'screens', code);
+      await setDoc(ref, {
+        id: code,
+        name: `TV Simuladora - ${currentClient.establishmentName || 'Minha TV'}`,
+        pairingCode: code,
+        status: 'online',
+        lastActive: serverTimestamp(),
+        contentType: 'idle',
+        contentId: '',
+        pairedAt: serverTimestamp(),
+        ownerId: currentClient.ownerId || 'client_portal',
+        clientId: currentClient.id,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      setSuccessMsg('Smart TV Virtual de testes criada com sucesso!');
+      setTimeout(() => setSuccessMsg(''), 3000);
+      setSimulatorScreenId(code);
+    } catch (err) {
+      console.error('Error creating virtual screen:', err);
+      setErrorMsg('Falha ao instanciar TV virtual.');
+      setTimeout(() => setErrorMsg(''), 4000);
+    }
+  };
+
+  const assignContentToScreen = async (screenId: string, contentType: 'idle' | 'asset' | 'playlist' | 'standby' | 'stopped', contentId: string) => {
+    try {
+      await updateDoc(doc(db, 'screens', screenId), {
+        contentType,
+        contentId,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (err) {
+      console.error('Error assigning content:', err);
+      setErrorMsg('Falha ao sintonizar conteúdo.');
+    }
+  };
+
+  const handleTogglePower = async (screenId: string, currentType: 'playlist' | 'asset' | 'idle' | 'standby' | 'stopped', contentId: string) => {
+    try {
+      if (currentType === 'stopped') {
+        let newType: 'playlist' | 'asset' | 'idle' | 'standby' = 'idle';
+        if (contentId) {
+          const isPlaylist = playlists.some((p) => p.id === contentId);
+          const isAsset = assets.some((a) => a.id === contentId);
+          if (isPlaylist) {
+            newType = 'playlist';
+          } else if (isAsset) {
+            newType = 'asset';
+          }
+        }
+        await updateDoc(doc(db, 'screens', screenId), {
+          contentType: newType,
+          updatedAt: serverTimestamp()
+        });
+        setSuccessMsg('O monitor foi ligado com sucesso!');
+        setTimeout(() => setSuccessMsg(''), 2000);
+      } else {
+        await updateDoc(doc(db, 'screens', screenId), {
+          contentType: 'stopped',
+          updatedAt: serverTimestamp()
+        });
+        setSuccessMsg('O monitor foi desligado (Exibição Parada)!');
+        setTimeout(() => setSuccessMsg(''), 2000);
+      }
+    } catch (err) {
+      console.error('Erro ao alternar energia da tela:', err);
+      setErrorMsg('Falha ao alternar a exibição da tela.');
     }
   };
 
@@ -772,10 +848,9 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
       
       {/* Top Banner Branding Header */}
       <div className="p-6 md:p-8 bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-900 border-b border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-        <div className="space-y-1">
-          <div className="inline-flex items-center gap-2 px-2.5 py-1 bg-indigo-500/10 text-indigo-400 text-[10px] font-bold rounded-full uppercase tracking-wider border border-indigo-500/20">
-            <ShoppingBag className="w-3 h-3" />
-            Portal de Mídia de Estabelecimentos
+        <div className="space-y-2">
+          <div className="inline-flex items-center gap-2">
+            <VitrionLogo variant="badge" theme="dark" size="xs" />
           </div>
           <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
             {client.establishmentName}
@@ -1075,19 +1150,59 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
                               className="inline-flex items-center gap-0.5 ml-1 text-indigo-400 hover:underline hover:text-indigo-300"
                               title="Abrir TV Player simulado desta tela em outra aba"
                             >
-                              <ExternalLink className="w-3 h-3" /> Player
+                              <ExternalLink className="w-3 h-3" /> Player Externo
                             </a>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSimulatorScreenId(screen.id);
+                                setIsSimulatorOpen(true);
+                              }}
+                              className="inline-flex items-center gap-0.5 ml-2.5 text-indigo-400 hover:underline hover:text-indigo-300 font-semibold bg-transparent border-0 cursor-pointer p-0"
+                              title="Simular Smart TV com Controle Remoto em Tempo Real para esta tela"
+                            >
+                              🖥️ Simulador
+                            </button>
                           </div>
                         </div>
 
                         {/* Remove monitor buttons */}
-                        <button
-                          onClick={() => handleRemoveDisplay(screen.id, screen.name)}
-                          className="p-1.5 text-slate-500 hover:text-red-400 rounded-lg bg-white/2 hover:bg-white/5 opacity-85 hover:opacity-100 transition shrink-0 cursor-pointer"
-                          title="Excluir e desvincular este display de TVPermanentemente"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {confirmDeleteId === screen.id ? (
+                          <div className="flex items-center gap-1.5 shrink-0 select-none animate-fade-in">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveDisplay(screen.id, screen.name);
+                                setConfirmDeleteId(null);
+                              }}
+                              className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-md text-[10px] font-extrabold uppercase transition cursor-pointer border border-red-500 shadow-sm"
+                            >
+                              Confirmar?
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setConfirmDeleteId(null);
+                              }}
+                              className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-md text-[10px] font-bold uppercase transition cursor-pointer border border-slate-650"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmDeleteId(screen.id);
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-red-400 rounded-lg bg-white/2 hover:bg-white/5 opacity-85 hover:opacity-100 transition shrink-0 cursor-pointer"
+                            title="Excluir e desvincular este display de TV permanentemente"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
 
                       {/* Real-time Simulator Aspect-Video TV Display Frame */}
@@ -1994,6 +2109,306 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
         </footer>
 
       </div>
+
+      {/* Real-time Smart TV Simulator Modal Dialog */}
+      {isSimulatorOpen && (
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in text-white select-none">
+          <div className="bg-slate-905 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden animate-scale-up flex flex-col h-[90vh] md:h-auto md:max-h-[85vh]">
+            
+            {/* Modal Header */}
+            <header className="p-4 border-b border-slate-800 flex items-center justify-between shrink-0 bg-slate-950/40">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-650/10 border border-indigo-500/20 flex items-center justify-center text-indigo-455">
+                  <Tv className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold tracking-tight">Simulador de Smart TV Inteligente</h3>
+                  <p className="text-[10.5px] text-slate-400 font-medium select-text">
+                    Canal: <strong className="text-indigo-400">{currentClient.establishmentName}</strong>
+                  </p>
+                </div>
+              </div>
+              
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSimulatorOpen(false);
+                  setSimulatorScreenId('');
+                }}
+                className="p-1.5 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </header>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 md:grid md:grid-cols-12 gap-6 space-y-6 md:space-y-0 bg-slate-900">
+              
+              {/* Left Column (Virtual TV Frame) */}
+              <div className="md:col-span-7 flex flex-col justify-center items-center">
+                <div className="w-full text-center mb-2 flex items-center justify-between px-1">
+                  <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 font-mono">
+                    PRODUÇÃO DIGITAL DO MONITOR EM TEMPO REAL
+                  </span>
+                  {simulatorScreenId && (
+                    <span className="text-[9px] bg-emerald-500/10 text-emerald-405 border border-emerald-500/15 font-mono px-2 py-0.5 rounded-full font-bold uppercase animate-pulse">
+                      Simulando Transmissão
+                    </span>
+                  )}
+                </div>
+
+                <div className="w-full relative py-4 px-2 flex flex-col justify-center items-center">
+                  {/* Glowing LED backlighting */}
+                  <div className="absolute inset-0 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none scale-75 animate-pulse" />
+
+                  {/* Physical Bezel structure */}
+                  <div className="w-full aspect-video bg-black border-8 border-slate-950 rounded-2xl shadow-2xl relative overflow-hidden flex flex-col justify-between">
+                    {/* Top glass reflection */}
+                    <div className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/5 to-transparent pointer-events-none z-10" />
+
+                    {simulatorScreenId ? (
+                      <iframe
+                        src={`/?mode=player&screenId=${simulatorScreenId}`}
+                        title="Vitrion Client Smart TV Simulator Canvas"
+                        className="w-full h-full border-0 select-none pointer-events-auto bg-slate-950"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center p-8 text-center text-slate-400 font-sans">
+                        <Monitor className="w-12 h-12 text-slate-700 mb-3 animate-pulse" />
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider animate-pulse">Não sintonizado no Simulador</h4>
+                        <p className="text-[10px] text-slate-500 max-w-xs mt-1.5 leading-relaxed">
+                          Nenhuma Smart TV está selecionada no painel. Selecione uma TV ativa ou clique para autocriar uma TV virtual de desenvolvimento.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => handleCreateVirtualTV()}
+                          className="mt-4 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-bold uppercase transition flex items-center gap-1.5 shadow-md cursor-pointer"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          Parear TV Virtual de Testes
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="absolute bottom-1 right-2 z-20 text-[6px] text-white/20 uppercase tracking-widest font-mono">
+                      VITRION OS PLAYER v2.4
+                    </div>
+                  </div>
+
+                  {/* TV Stand Base */}
+                  <div className="w-16 h-3 bg-slate-950 rounded-t-xl z-0 shadow-md relative" />
+                  <div className="w-32 h-1 bg-slate-950 rounded-full z-0 shadow-inner" />
+                </div>
+
+                {simulatorScreenId && (
+                  <div className="text-center mt-3 text-[10px] text-slate-450 font-mono">
+                    ID Física: <strong className="text-indigo-400 select-all">{simulatorScreenId}</strong> • Monitor Conectado via Firebase Real-time Sync
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column (Controls & Infrared Remote Simulator) */}
+              <div className="md:col-span-12 lg:col-span-5 flex flex-col justify-between gap-5 border-t md:border-t-0 md:border-l border-slate-800 pt-6 md:pt-0 md:pl-6 bg-slate-900">
+                
+                {/* 1. TV Screen selector dropdown list */}
+                <div className="space-y-2 bg-slate-950/40 p-4 rounded-xl border border-slate-800">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    Selecione qual TV Monitor simular:
+                  </label>
+                  <div className="flex gap-2">
+                    <select
+                      value={simulatorScreenId}
+                      onChange={(e) => setSimulatorScreenId(e.target.value)}
+                      className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-indigo-505 cursor-pointer max-w-[200px] md:max-w-none text-ellipsis"
+                    >
+                      <option value="">-- Escolha uma TV --</option>
+                      {screens.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          📺 {s.name} (Cód: {s.pairingCode})
+                        </option>
+                      ))}
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={() => handleCreateVirtualTV()}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 hover:text-white text-indigo-400 border border-slate-700/60 rounded-lg text-[10px] font-bold uppercase transition flex items-center gap-1 cursor-pointer shrink-0"
+                      title="Parear uma nova TV virtual de testes para este estabelecimento"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      + CRIAR
+                    </button>
+                  </div>
+                </div>
+
+                {simulatorScreenId ? (
+                  <>
+                    {/* 2. Media Quick Sintonizer */}
+                    <div className="space-y-3 p-4 bg-slate-950/20 rounded-xl border border-slate-850">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest font-sans">
+                          Sintonizar no Simulador:
+                        </span>
+                        <span className="text-[9px] text-slate-500 font-mono">1-Clique para Exibir</span>
+                      </div>
+
+                      <div className="space-y-3 max-h-[160px] overflow-y-auto pr-1">
+                        {/* List available playlists */}
+                        {playlists.length > 0 && (
+                          <div className="space-y-1">
+                            <span className="text-[8px] text-slate-400 uppercase font-black tracking-wider block">📋 Minhas Playlists</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {playlists.map((p) => (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  onClick={() => assignContentToScreen(simulatorScreenId, 'playlist', p.id)}
+                                  className="px-2 py-1 bg-indigo-950/40 hover:bg-indigo-900/60 border border-indigo-500/20 hover:border-indigo-500 text-indigo-300 hover:text-white rounded text-[9px] font-extrabold flex items-center gap-0.5 cursor-pointer transition shrink-0"
+                                >
+                                  🔁 {p.name}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* List available Assets */}
+                        {assets.length > 0 && (
+                          <div className="space-y-1">
+                            <span className="text-[8px] text-slate-400 uppercase font-black tracking-wider block">🎯 Minhas Mídias Cadastradas</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {assets.map((a) => (
+                                <button
+                                  key={a.id}
+                                  type="button"
+                                  onClick={() => assignContentToScreen(simulatorScreenId, 'asset', a.id)}
+                                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-705 hover:border-slate-650 rounded text-[9px] font-bold flex items-center gap-1 cursor-pointer transition shrink-0"
+                                >
+                                  <span>{a.type === 'video' ? '🎬' : '📷'}</span>
+                                  <span>{a.name}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 3. Remote Control */}
+                    <div className="flex bg-slate-950 rounded-2xl p-4 border border-slate-800 items-center justify-between shadow-lg">
+                      <div className="space-y-1 pr-2 flex-1">
+                        <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-widest bg-indigo-550/10 px-2 py-0.5 rounded border border-indigo-500/15 inline-block">
+                          Controle Remoto de Simulação
+                        </span>
+                        <h4 className="text-xs font-bold text-slate-200">Silk Remote v2</h4>
+                        <p className="text-[9px] text-slate-400 leading-relaxed font-sans mt-0.5">
+                          Tocar botões abaixo envia pulso infravermelho virtual e liga/desliga a TV.
+                        </p>
+                      </div>
+
+                      {/* Remote Hardware Body Casing */}
+                      <div className="w-[105px] bg-slate-900 border border-slate-800 p-2 rounded-2xl flex flex-col items-center gap-2.5 shadow-xl shrink-0">
+                        
+                        <div className="flex items-center justify-between w-full px-1">
+                          {/* Red Power Button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const scr = screens.find(s => s.id === simulatorScreenId);
+                              if (scr) {
+                                handleTogglePower(simulatorScreenId, scr.contentType, scr.contentId);
+                              }
+                            }}
+                            className="w-7 h-7 bg-red-650 hover:bg-red-550 text-white rounded-full flex items-center justify-center cursor-pointer transition shadow-xl"
+                            title="Ligar ou Desligar Smart TV"
+                          >
+                            <Power className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Standby moon button */}
+                          <button
+                            type="button"
+                            onClick={() => assignContentToScreen(simulatorScreenId, 'standby', '')}
+                            className="w-7 h-7 bg-amber-500/15 hover:bg-amber-500/30 text-amber-400 rounded-full flex items-center justify-center cursor-pointer transition"
+                            title="Entrar em Modo Standby (Logo)"
+                          >
+                            🌙
+                          </button>
+                        </div>
+
+                        {/* Physical D-Pad Circle */}
+                        <div className="w-16 h-16 rounded-full bg-slate-950 border border-slate-800 flex items-center justify-center relative shadow-inner">
+                          <button
+                            type="button"
+                            onClick={() => assignContentToScreen(simulatorScreenId, 'idle', '')}
+                            className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center text-[9px] font-mono font-black shadow-md cursor-pointer transition border border-slate-700"
+                            title="Parar / Resetar ao Ocioso"
+                          >
+                            OK
+                          </button>
+                          
+                          <span className="absolute top-0.5 text-[7px] text-slate-600">▲</span>
+                          <span className="absolute bottom-0.5 text-[7px] text-slate-600">▼</span>
+                          <span className="absolute left-1 text-[7px] text-slate-600">◀</span>
+                          <span className="absolute right-1 text-[7px] text-slate-600">▶</span>
+                        </div>
+
+                        {/* Lower layout button panel */}
+                        <div className="grid grid-cols-2 gap-1 w-full">
+                          <button
+                            type="button"
+                            onClick={() => assignContentToScreen(simulatorScreenId, 'idle', '')}
+                            className="py-1 px-1.5 bg-slate-800 hover:bg-slate-750 text-slate-350 rounded text-[8px] font-bold uppercase transition"
+                            title="Zerar exibição"
+                          >
+                            Ocioso
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const scr = screens.find(s => s.id === simulatorScreenId);
+                              if (scr) {
+                                assignContentToScreen(simulatorScreenId, scr.contentType, scr.contentId);
+                              }
+                            }}
+                            className="py-1 px-1.5 bg-slate-800 hover:bg-slate-750 text-slate-350 rounded text-[8px] font-bold uppercase transition"
+                            title="Sincronizar Monitor"
+                          >
+                            Sync
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex-1 flex flex-col justify-center items-center text-slate-500 py-12 text-center text-[10.5px]">
+                    <Monitor className="w-8 h-8 text-slate-700 mb-2 animate-bounce" />
+                    <span>Selecione uma TV acima para acessar as ferramentas de reprodução real e controle remoto.</span>
+                  </div>
+                )}
+
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <footer className="p-3 bg-slate-950 shrink-0 text-center border-t border-slate-800 text-[10px] text-slate-500 flex justify-between px-6 items-center">
+              <span>Para rodar o player em tela cheia no dispositivo de verdade, use o código de pareamento do monitor.</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSimulatorOpen(false);
+                  setSimulatorScreenId('');
+                }}
+                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-[10px] font-extrabold uppercase transition cursor-pointer"
+              >
+                Fechar Simulador
+              </button>
+            </footer>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );
