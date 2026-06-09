@@ -5,7 +5,7 @@ import { Screen, Playlist, Asset } from '../types';
 import { 
   Tv, Sparkles, Trash2, ShieldCheck, Play, HelpCircle, AlertCircle,
   Smartphone, Monitor, RefreshCw, Layers, CheckCircle, Info, ExternalLink,
-  Search, Calendar, Pencil, X, Building, Clock, Power
+  Search, Calendar, Pencil, X, Building, Clock, Power, ChevronDown, ChevronUp
 } from 'lucide-react';
 
 export default function ScreenManager() {
@@ -61,6 +61,16 @@ export default function ScreenManager() {
   // Simulated playback state (for the embedded TV viewer)
   const [simulatedAsset, setSimulatedAsset] = useState<any>(null);
   const [playlistIndex, setPlaylistIndex] = useState(0);
+
+  // Expanded/Retracted state for client display lists
+  const [collapsedClientIds, setCollapsedClientIds] = useState<Record<string, boolean>>({});
+
+  const toggleClientCollapse = (clientId: string) => {
+    setCollapsedClientIds((prev) => ({
+      ...prev,
+      [clientId]: !prev[clientId],
+    }));
+  };
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
@@ -631,6 +641,16 @@ export default function ScreenManager() {
 
 
 
+  const totalScreens = screens.length;
+  const onlineScreens = screens.filter((screen) => {
+    if (!screen.lastActive) return false;
+    const seconds = (screen.lastActive as any).seconds;
+    const lastActiveMs = seconds ? seconds * 1000 : new Date(screen.lastActive as any).getTime();
+    const deltaSeconds = (Date.now() - lastActiveMs) / 1000;
+    return deltaSeconds < 65;
+  }).length;
+  const offlineScreens = Math.max(0, totalScreens - onlineScreens);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -649,27 +669,73 @@ export default function ScreenManager() {
         )}
       </div>
 
-      {/* Switcher Tab Navigation */}
-      <div className="flex border-b border-slate-200 gap-1 select-none">
+      {/* Premium Dashboard Metrics Shelf */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-3xs flex items-center gap-3">
+          <div className="p-2.5 bg-indigo-50 border border-indigo-100 text-indigo-650 rounded-lg shrink-0">
+            <Monitor className="w-4.5 h-4.5" />
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase font-bold tracking-wider text-slate-400 leading-none">Total de Telas</span>
+            <span className="text-lg font-bold font-mono text-slate-800 leading-tight block mt-1">{totalScreens}</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-3xs flex items-center gap-3">
+          <div className="p-2.5 bg-emerald-50 border border-emerald-100 text-emerald-600 rounded-lg shrink-0">
+            <div className="relative">
+              <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+              <Tv className="w-4.5 h-4.5" />
+            </div>
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase font-bold tracking-wider text-slate-400 leading-none">Monitores Online</span>
+            <span className="text-lg font-bold font-mono text-emerald-600 leading-tight block mt-1">{onlineScreens}</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-3xs flex items-center gap-3">
+          <div className="p-2.5 bg-slate-50 border border-slate-200 text-slate-400 rounded-lg shrink-0">
+            <Power className="w-4.5 h-4.5" />
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase font-bold tracking-wider text-slate-400 leading-none">Monitores Offline</span>
+            <span className="text-lg font-bold font-mono text-slate-500 leading-tight block mt-1">{offlineScreens}</span>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-3xs flex items-center gap-3">
+          <div className="p-2.5 bg-indigo-50/50 border border-indigo-100 text-indigo-650 rounded-lg shrink-0">
+            <Building className="w-4.5 h-4.5" />
+          </div>
+          <div>
+            <span className="block text-[10px] uppercase font-bold tracking-wider text-slate-400 leading-none">Clientes Ativos</span>
+            <span className="text-lg font-bold font-mono text-slate-700 leading-tight block mt-1">{clients.length}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Switcher Tab Navigation - Premium Capsule Segments */}
+      <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 select-none max-w-sm border border-slate-200/40">
         <button
           onClick={() => { setActiveTab('by-client'); setSearchTerm(''); }}
-          className={`py-2.5 px-4 text-xs font-bold leading-none border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
+          className={`flex-1 py-1.5 px-3.5 text-xs font-semibold leading-none rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
             activeTab === 'by-client'
-              ? 'border-indigo-600 text-indigo-700 font-extrabold pb-3'
-              : 'border-transparent text-slate-550 hover:text-slate-850 pb-3'
+              ? 'bg-white text-indigo-700 font-bold shadow-xs border border-slate-200/40'
+              : 'text-slate-550 hover:text-slate-800 hover:bg-white/40'
           }`}
         >
-          🏢 Central de Distribuição por Cliente
+          🏢 Por Cliente
         </button>
         <button
           onClick={() => { setActiveTab('individual'); setSearchTerm(''); }}
-          className={`py-2.5 px-4 text-xs font-bold leading-none border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
+          className={`flex-1 py-1.5 px-3.5 text-xs font-semibold leading-none rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
             activeTab === 'individual'
-              ? 'border-indigo-600 text-indigo-700 font-extrabold pb-3'
-              : 'border-transparent text-slate-550 hover:text-slate-850 pb-3'
+              ? 'bg-white text-indigo-700 font-bold shadow-xs border border-slate-200/40'
+              : 'text-slate-550 hover:text-slate-800 hover:bg-white/40'
           }`}
         >
-          🖥️ Todas as TVs Individuais
+          🖥️ TVs Individuais ({totalScreens})
         </button>
       </div>
 
@@ -778,7 +844,7 @@ export default function ScreenManager() {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Connected Screens List (Left) */}
-        <div className="lg:col-span-7 space-y-4">
+        <div className="lg:col-span-7 xl:col-span-8 space-y-4">
           {/* Shared Search Bar for both tabs */}
           <div className="flex items-center gap-3 bg-white px-4 py-3 rounded-xl border border-slate-200 shadow-xxs">
             <Search className="w-4.5 h-4.5 text-slate-400 shrink-0" />
@@ -1069,21 +1135,21 @@ export default function ScreenManager() {
             </>
           ) : (
             /* BY CLIENT LAYOUT */
-            <div className="space-y-4 font-sans text-slate-700">
+            <div className="space-y-3 font-sans text-slate-700">
               <div className="flex items-center justify-between">
                 <span className="block text-xs font-semibold text-slate-700">🏢 Painel de Controle de TVs por Cliente ({filteredClients.length})</span>
               </div>
 
               {filteredClients.length === 0 ? (
-                <div className="text-center py-16 bg-white rounded-xl border border-dashed border-slate-300">
-                  <Building className="w-10 h-10 text-slate-350 mx-auto mb-3" />
-                  <h4 className="text-sm font-bold text-slate-700 font-sans">Nenhum Registro Encontrado</h4>
-                  <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1 leading-relaxed font-sans">
+                <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-300">
+                  <Building className="w-8 h-8 text-slate-350 mx-auto mb-2" />
+                  <h4 className="text-xs font-bold text-slate-700 font-sans">Nenhum Registro Encontrado</h4>
+                  <p className="text-[11px] text-slate-500 max-w-sm mx-auto mt-0.5 leading-relaxed font-sans">
                     Não encontramos clientes que correspondam aos filtros de pesquisa ativos.
                   </p>
                 </div>
               ) : (
-                <div className="space-y-5">
+                <div className="space-y-3">
                   {/* List of Registered Client Rows */}
                   {filteredClients.map((client) => {
                     const clientScreens = screens.filter((s) => s.clientId === client.id);
@@ -1100,16 +1166,16 @@ export default function ScreenManager() {
                     };
 
                     return (
-                      <div key={client.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs transition hover:border-indigo-200">
-                        {/* Elegant Client Line Header */}
-                        <div className="bg-slate-50/70 p-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                          <div className="flex items-start gap-3 min-w-0">
-                            <div className="p-2 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-lg shrink-0 mt-0.5">
-                              <Building className="w-4.5 h-4.5" />
+                      <div key={client.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs transition hover:border-indigo-200">
+                        {/* Elegant Client Line Header - COMPACT */}
+                        <div className="bg-slate-50/70 py-2.5 px-3.5 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                          <div className="flex items-start gap-2.5 min-w-0">
+                            <div className="p-1.5 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-lg shrink-0 mt-0.5">
+                              <Building className="w-3.5 h-3.5" />
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <h4 className="text-sm font-bold text-slate-800 leading-snug">
+                                <h4 className="text-xs font-bold text-slate-800 leading-none">
                                   {client.establishmentName}
                                 </h4>
                                 <button
@@ -1126,20 +1192,20 @@ export default function ScreenManager() {
                                     setEditClientVencimento(client.vencimento || '');
                                     setIsEditClientModalOpen(true);
                                   }}
-                                  className="p-1 hover:bg-slate-200 hover:text-indigo-650 text-slate-400 rounded transition cursor-pointer"
+                                  className="p-0.5 hover:bg-slate-200 hover:text-indigo-650 text-slate-400 rounded transition cursor-pointer"
                                   title="Editar Estabelecimento Comercial / Cliente"
                                 >
-                                  <Pencil className="w-3.5 h-3.5" />
+                                  <Pencil className="w-3 h-3" />
                                 </button>
-                                <span className="text-[10px] font-semibold text-slate-550 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
+                                <span className="text-[9.5px] font-semibold text-slate-550 bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded">
                                   {client.city} - {client.state}
                                 </span>
-                                <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
+                                <span className="text-[9.5px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.2 rounded">
                                   Plano: {plan ? plan.name : 'Nenhum'}
                                 </span>
                               </div>
-                              <div className="text-[10.5px] text-slate-500 mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                                <span><strong>👤 Responsável:</strong> {client.name}</span>
+                              <div className="text-[10px] text-slate-520 mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+                                <span><strong>👤 Resp:</strong> {client.name}</span>
                                 {client.phone && (
                                   <a 
                                     href={`https://wa.me/${client.phone.replace(/\D/g, '')}`}
@@ -1150,60 +1216,60 @@ export default function ScreenManager() {
                                     📞 {client.phone}
                                   </a>
                                 )}
-                                <span className="text-indigo-700 font-mono font-bold bg-indigo-50/20 text-[10px] px-1.5 py-0.2 rounded border border-indigo-100/30">
+                                <span className="text-indigo-700 font-mono font-bold bg-indigo-50/15 text-[9px] px-1 py-0.2 rounded border border-indigo-100/20">
                                   📅 Vence: {formatVencimento(client.vencimento)}
                                 </span>
                               </div>
                             </div>
                           </div>
 
-                          {/* Batch Actions & TV Limits */}
-                          <div className="flex items-center gap-3 shrink-0 flex-wrap">
-                            <div className="text-left md:text-right mr-1">
-                              <span className="text-[11px] font-bold text-slate-600 block">
+                          {/* Batch Actions & TV Limits - COMPACT BUTTONS */}
+                          <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+                            <div className="text-left md:text-right">
+                              <span className="text-[10px] font-bold text-slate-550 block leading-tight">
                                 TVs Pareadas: <span className="text-indigo-700 font-extrabold">{clientScreens.length}</span> / {plan ? plan.maxScreens : '0'}
                               </span>
                             </div>
 
                             <div className="flex items-center gap-1">
                               {confirmClientStandbyId === client.id ? (
-                                <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg h-8 animate-fade-in text-[10.5px] font-bold text-amber-850">
-                                  <span>Confirmar Standby de {clientScreens.length} TV(s)?</span>
+                                <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md h-7 animate-fade-in text-[9.5px] font-bold text-amber-850">
+                                  <span>Confirmar? ({clientScreens.length} TV)</span>
                                   <button
                                     type="button"
                                     onClick={() => {
                                       handleClientStandby(client.id, true);
                                       setConfirmClientStandbyId(null);
                                     }}
-                                    className="px-2 py-0.5 bg-amber-600 hover:bg-amber-700 text-white rounded font-extrabold uppercase text-[10px] cursor-pointer"
+                                    className="px-1.5 py-0.2 bg-amber-600 hover:bg-amber-700 text-white rounded font-extrabold uppercase text-[9px] cursor-pointer"
                                   >
                                     Sim
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => setConfirmClientStandbyId(null)}
-                                    className="px-2 py-0.5 bg-slate-200 hover:bg-slate-355 text-slate-700 rounded font-bold uppercase text-[10px] cursor-pointer"
+                                    className="px-1.5 py-0.2 bg-slate-200 hover:bg-slate-300 text-slate-750 rounded font-bold uppercase text-[9px] cursor-pointer"
                                   >
                                     Não
                                   </button>
-                               </div>
+                                </div>
                               ) : confirmClientUnpairAllId === client.id ? (
-                                <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5 bg-red-50 border border-red-200 px-2.5 py-1 rounded-lg h-8 animate-fade-in text-[10.5px] font-bold text-red-850">
-                                  <span>Desvincular TODAS as {clientScreens.length} TV(s)?</span>
+                                <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 bg-red-50 border border-red-200 px-2 py-0.5 rounded-md h-7 animate-fade-in text-[9.5px] font-bold text-red-850">
+                                  <span>Desvincular {clientScreens.length} TV(s)?</span>
                                   <button
                                     type="button"
                                     onClick={() => {
                                       handleClientUnpairAll(client.id, true);
                                       setConfirmClientUnpairAllId(null);
                                     }}
-                                    className="px-2 py-0.5 bg-red-650 hover:bg-red-750 text-white rounded font-extrabold uppercase text-[10px] cursor-pointer"
+                                    className="px-1.5 py-0.2 bg-red-650 hover:bg-red-750 text-white rounded font-extrabold uppercase text-[9px] cursor-pointer"
                                   >
                                     Remover
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => setConfirmClientUnpairAllId(null)}
-                                    className="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded font-bold uppercase text-[10px] cursor-pointer"
+                                    className="px-1.5 py-0.2 bg-slate-200 hover:bg-slate-250 text-slate-700 rounded font-bold uppercase text-[9px] cursor-pointer"
                                   >
                                     Não
                                   </button>
@@ -1218,16 +1284,16 @@ export default function ScreenManager() {
                                       setSimulatorScreenId(firstScr ? firstScr.id : '');
                                       setIsSimulatorOpen(true);
                                     }}
-                                    className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-[9.5px] tracking-wider rounded-lg transition-all cursor-pointer shadow-xxs flex items-center gap-1 shrink-0"
+                                    className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[9px] tracking-wide rounded-md transition-all cursor-pointer shadow-3xs flex items-center gap-0.5 shrink-0"
                                     title="Abrir Simulador de Smart TV Inteligente em Tempo Real para este Cliente"
                                   >
-                                    🖥️ SIMULAR SMART TV
+                                    🖥️ SIMULAR TV
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => handleClientActive(client.id)}
                                     disabled={clientScreens.length === 0}
-                                    className="px-2.5 py-1.5 bg-emerald-550 hover:bg-emerald-600 text-white disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed font-extrabold text-[9.5px] tracking-wider rounded-lg transition-all border border-emerald-600 cursor-pointer shadow-xxs"
+                                    className="px-2 py-1 bg-emerald-550 hover:bg-emerald-600 text-white disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:opacity-50 disabled:cursor-not-allowed font-bold text-[9px] tracking-wide rounded-md transition-all border border-emerald-600 cursor-pointer shadow-3xs"
                                     title="Ligar todas as TVs deste cliente"
                                   >
                                     🚀 LIGAR TUDO
@@ -1239,7 +1305,7 @@ export default function ScreenManager() {
                                       setConfirmClientUnpairAllId(null);
                                     }}
                                     disabled={clientScreens.length === 0}
-                                    className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 disabled:opacity-50 disabled:cursor-not-allowed border border-amber-200 font-extrabold text-[9.5px] tracking-wider rounded-lg transition-all cursor-pointer shadow-xxs"
+                                    className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 disabled:opacity-50 disabled:cursor-not-allowed border border-amber-200 font-bold text-[9px] tracking-wide rounded-md transition-all cursor-pointer shadow-3xs"
                                     title="Standby para todas as TVs"
                                   >
                                     💤 STANDBY
@@ -1251,23 +1317,38 @@ export default function ScreenManager() {
                                       setConfirmClientStandbyId(null);
                                     }}
                                     disabled={clientScreens.length === 0}
-                                    className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 disabled:opacity-50 disabled:cursor-not-allowed border border-red-200 font-extrabold text-[9.5px] tracking-wider rounded-lg transition-all cursor-pointer shadow-xxs"
+                                    className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-705 disabled:opacity-50 disabled:cursor-not-allowed border border-red-250 font-bold text-[9px] tracking-wide rounded-md transition-all cursor-pointer shadow-3xs"
                                     title="Desvincular todas as TVs deste cliente"
                                   >
-                                    🚨 REMOVER TUDO
+                                    🚨 REMOVER
                                   </button>
                                 </>
                               )}
                             </div>
+
+                            {/* Compress / Expand Button */}
+                            <button
+                              type="button"
+                              onClick={() => toggleClientCollapse(client.id)}
+                              className="p-1 hover:bg-slate-200 text-slate-550 rounded-md border border-slate-200 bg-white shadow-3xs transition cursor-pointer flex items-center justify-center shrink-0"
+                              title={collapsedClientIds[client.id] ? "Expandir lista de TVs" : "Recolher lista de TVs"}
+                            >
+                              {collapsedClientIds[client.id] ? (
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              ) : (
+                                <ChevronUp className="w-3.5 h-3.5" />
+                              )}
+                            </button>
                           </div>
                         </div>
 
                         {/* List of TVs belonging to this client (Rows/Lines) */}
-                        <div className="p-4 bg-slate-50/20 divide-y divide-slate-100">
+                        {!collapsedClientIds[client.id] && (
+                          <div className="p-2 bg-slate-50/15 border-t border-slate-100">
                           {clientScreens.length === 0 ? (
-                            <p className="text-xs text-slate-400 italic py-4 text-center font-sans">Nenhuma Smart TV vinculada a este estabelecimento.</p>
+                            <p className="text-[10.5px] text-slate-400 italic py-2 text-center font-sans">Nenhuma Smart TV vinculada a este estabelecimento.</p>
                           ) : (
-                            <div className="space-y-2">
+                            <div className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1.5 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
                               {clientScreens.map((scr) => {
                                 const isSelected = selectedScreenId === scr.id;
                                 let online = false;
@@ -1280,17 +1361,17 @@ export default function ScreenManager() {
                                   <div
                                     key={scr.id}
                                     onClick={() => setSelectedScreenId(scr.id)}
-                                    className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all cursor-pointer ${
+                                    className={`p-2 px-3 rounded-lg border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition-all cursor-pointer ${
                                       isSelected 
                                         ? 'border-indigo-600 bg-indigo-50/15 font-semibold text-indigo-950 ring-1 ring-indigo-150 shadow-xxs'
                                         : 'border-slate-100 bg-white hover:border-slate-200 hover:bg-slate-50 shadow-3xs'
                                     }`}
                                   >
                                     <div className="min-w-0 flex-1">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <span className={`w-2 h-2 rounded-full shrink-0 ${online ? 'bg-emerald-500 animate-pulse' : 'bg-slate-350'}`} />
-                                        <span className="text-[11.5px] font-extrabold text-slate-700 truncate block">{scr.name}</span>
-                                        <span className="text-[9.5px] font-mono font-bold bg-slate-100 text-slate-650 border border-slate-200 px-1.5 py-0.2 rounded shrink-0">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${online ? 'bg-emerald-500 animate-pulse' : 'bg-slate-350'}`} />
+                                        <span className="text-[11px] font-extrabold text-slate-700 truncate block">{scr.name}</span>
+                                        <span className="text-[9px] font-mono font-bold bg-slate-100 text-slate-650 border border-slate-200 px-1 py-0.2 rounded shrink-0">
                                           CÓD: {scr.pairingCode}
                                         </span>
                                         <a
@@ -1298,16 +1379,16 @@ export default function ScreenManager() {
                                           target="_blank"
                                           rel="noopener noreferrer"
                                           onClick={(e) => e.stopPropagation()}
-                                          className="text-[10px] text-indigo-650 hover:underline font-extrabold flex items-center gap-0.5"
+                                          className="text-[9.5px] text-indigo-650 hover:underline font-extrabold flex items-center gap-0.5"
                                           title="Abrir reprodutor de Smart TV simulado em outra aba"
                                         >
                                           <ExternalLink className="w-2.5 h-2.5" /> Player Remoto
                                         </a>
                                       </div>
                                       
-                                      <div className="flex items-center gap-1.5 leading-none mt-1.5 text-[10.5px] text-slate-550">
-                                        <span className="font-bold text-slate-400 uppercase text-[9px] tracking-wider shrink-0">Status Ativo:</span>
-                                        <span className="font-semibold text-slate-700 truncate max-w-xs md:max-w-md bg-slate-100 hover:bg-slate-200 px-2 py-0.5 border border-slate-200 rounded-md">
+                                      <div className="flex items-center gap-1 leading-none mt-0.5 text-[9.5px] text-slate-500">
+                                        <span className="font-bold text-slate-400 uppercase text-[8.5px] tracking-wider shrink-0">Sinal:</span>
+                                        <span className="font-semibold text-slate-700 truncate max-w-xs md:max-w-md bg-slate-100 hover:bg-slate-200 px-1 py-0.2 border border-slate-200 rounded">
                                           {scr.contentType === 'idle' && 'Ocioso (Sem programação)'}
                                           {scr.contentType === 'standby' && 'Standby / Descanso 💤'}
                                           {scr.contentType === 'stopped' && 'Desligado / Sem Transmissão 🛑'}
@@ -1318,10 +1399,10 @@ export default function ScreenManager() {
                                     </div>
 
                                     {/* Column with Content Assigner dropdown + Power Switch + Controls */}
-                                    <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 select-none">
+                                    <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0 select-none">
                                       {/* On/Off Switch for power control */}
-                                      <div className="flex items-center gap-1 bg-white border border-slate-150 px-2 py-0.5 rounded-lg h-8">
-                                        <span className={`text-[9.5px] font-black tracking-wider ${scr.contentType !== 'stopped' ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                      <div className="flex items-center gap-1 bg-white border border-slate-150 px-1.5 py-0.5 rounded-md h-7">
+                                        <span className={`text-[8.5px] font-black tracking-wider ${scr.contentType !== 'stopped' ? 'text-emerald-600' : 'text-slate-400'}`}>
                                           {scr.contentType !== 'stopped' ? 'LIG' : 'DES'}
                                         </span>
                                         <button
@@ -1330,13 +1411,13 @@ export default function ScreenManager() {
                                             e.stopPropagation();
                                             handleTogglePower(scr.id, scr.contentType, scr.contentId);
                                           }}
-                                          className={`w-7.5 h-4.5 rounded-full p-0.5 transition-colors duration-250 cursor-pointer flex items-center ${
+                                          className={`w-7 h-4 rounded-full p-0.5 transition-colors duration-250 cursor-pointer flex items-center ${
                                             scr.contentType !== 'stopped' ? 'bg-emerald-500' : 'bg-slate-300'
                                           }`}
                                           title={scr.contentType !== 'stopped' ? 'Desligar Exibição' : 'Ligar Exibição'}
                                         >
                                           <div
-                                            className={`bg-white w-3.5 h-3.5 rounded-full shadow-xs transform transition-transform duration-250 ${
+                                            className={`bg-white w-3 h-3 rounded-full shadow-xs transform transition-transform duration-250 ${
                                               scr.contentType !== 'stopped' ? 'translate-x-3' : 'translate-x-0'
                                             }`}
                                           />
@@ -1351,7 +1432,7 @@ export default function ScreenManager() {
                                           const [cType, cId] = e.target.value.split(':');
                                           assignContentToScreen(scr.id, cType as any, cId);
                                         }}
-                                        className="px-2 py-1 bg-white border border-slate-200 text-slate-700 rounded-lg text-xs font-bold leading-tight outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer h-8 max-w-[140px] md:max-w-[180px]"
+                                        className="px-1.5 py-0.5 bg-white border border-slate-200 text-slate-700 rounded-md text-[10.5px] font-bold leading-tight outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer h-7 max-w-[124px] md:max-w-[150px]"
                                       >
                                         <option value="idle:">Ocioso</option>
                                         <option value="standby:">Standby</option>
@@ -1376,7 +1457,7 @@ export default function ScreenManager() {
 
                                       {/* Pencil (Edit) & Trash (Unpair) buttons */}
                                       {confirmDeleteScreenId === scr.id ? (
-                                        <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 bg-red-50 border border-red-200 rounded-lg p-0.5 h-8 animate-fade-in z-10 shrink-0">
+                                        <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 bg-red-50 border border-red-200 rounded-md p-0.5 h-7 animate-fade-in z-10 shrink-0">
                                           <button
                                             type="button"
                                             onClick={(e) => {
@@ -1384,7 +1465,7 @@ export default function ScreenManager() {
                                               handleUnpairScreen(scr.id, true);
                                               setConfirmDeleteScreenId(null);
                                             }}
-                                            className="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-black uppercase transition cursor-pointer"
+                                            className="px-1.5 py-0.2 bg-red-600 hover:bg-red-700 text-white rounded text-[9px] font-black uppercase transition cursor-pointer"
                                             title="Confirmar Exclusão"
                                           >
                                             Sim
@@ -1395,14 +1476,14 @@ export default function ScreenManager() {
                                               e.stopPropagation();
                                               setConfirmDeleteScreenId(null);
                                             }}
-                                            className="px-2 py-0.5 bg-slate-200 hover:bg-slate-350 text-slate-700 rounded text-[10px] font-bold uppercase transition cursor-pointer"
+                                            className="px-1.5 py-0.2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[9px] font-bold uppercase transition cursor-pointer"
                                             title="Cancelar"
                                           >
                                             Não
                                           </button>
                                         </div>
                                       ) : (
-                                        <div className="flex items-center gap-0.5 bg-white border border-slate-150 rounded-lg p-0.5 h-8">
+                                        <div className="flex items-center gap-0.5 bg-white border border-slate-150 rounded-md p-0.5 h-7">
                                           <button
                                             type="button"
                                             onClick={(e) => {
@@ -1412,10 +1493,10 @@ export default function ScreenManager() {
                                               setEditScreenClientId(scr.clientId || '');
                                               setIsEditModalOpen(true);
                                             }}
-                                            className="p-1 text-slate-400 hover:text-indigo-650 hover:bg-slate-50 rounded transition"
+                                            className="p-0.5 text-slate-400 hover:text-indigo-650 hover:bg-slate-50 rounded transition"
                                             title="Editar TV e Proprietário"
                                           >
-                                            <Pencil className="w-3.5 h-3.5" />
+                                            <Pencil className="w-3 h-3" />
                                           </button>
                                           <button
                                             type="button"
@@ -1423,10 +1504,10 @@ export default function ScreenManager() {
                                               e.stopPropagation();
                                               setConfirmDeleteScreenId(scr.id);
                                             }}
-                                            className="p-1 text-slate-400 hover:text-red-500 hover:bg-slate-50 rounded transition"
+                                            className="p-0.5 text-slate-400 hover:text-red-500 hover:bg-slate-50 rounded transition"
                                             title="Excluir Monitor Permanentemente"
                                           >
-                                            <Trash2 className="w-3.5 h-3.5" />
+                                            <Trash2 className="w-3 h-3" />
                                           </button>
                                         </div>
                                       )}
@@ -1437,26 +1518,25 @@ export default function ScreenManager() {
                             </div>
                           )}
                         </div>
+                        )}
                       </div>
                     );
                   })}
-
-
                 </div>
               )}
             </div>
           )}
         </div>
 
-        {/* Live TV Monitor Simulator Pane (Right) */}
-        <div className="lg:col-span-5 space-y-4 shadow-sm bg-white border rounded-xl p-5">
+        {/* Live TV Monitor Simulator Pane (Right) - STICKY COMPANION LISTENER */}
+        <div className="lg:col-span-5 xl:col-span-4 lg:sticky lg:top-6 space-y-4 shadow-sm bg-white border border-slate-200 rounded-xl p-5 z-20">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-slate-800 flex items-center gap-1">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-slate-800 flex items-center gap-1.5 font-sans">
                 <Monitor className="w-4 h-4 text-indigo-500" />
                 Simulador de TV Inteligente
               </h3>
-              <p className="text-[10px] text-slate-400 mt-0.5">Veja em tempo real o que está transmitindo no monitor ativo.</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">Acompanhe a reprodução e sintonize mídias em tempo real.</p>
             </div>
           </div>
 
@@ -1468,20 +1548,20 @@ export default function ScreenManager() {
               return (
                 <div className="space-y-4">
                   {/* Outer Frame styled like a thin bezel premium TV display */}
-                  <div className="w-full relative bg-slate-950 rounded-lg p-2.5 border border-slate-800 shadow-xl flex flex-col justify-between">
-                    <div className="w-full aspect-video rounded bg-black overflow-hidden relative flex flex-col items-center justify-center">
+                  <div className="w-full relative bg-slate-950 rounded-lg p-2 border border-slate-800 shadow-lg flex flex-col justify-between">
+                    <div className="w-full aspect-video rounded bg-black overflow-hidden relative flex flex-col items-center justify-center border border-slate-900 shadow-inner">
                       
                       {/* Interactive Player Renderer depending on active states */}
                       {pairedScreen.contentType === 'standby' ? (
-                        <div className="w-full h-full bg-[#05060c] flex flex-col items-center justify-center text-center p-4 select-none">
+                        <div className="w-full h-full bg-[#05060c] flex flex-col items-center justify-center text-center p-4 select-none animate-fade-in">
                           <Tv className="w-5 h-5 text-amber-500 animate-pulse mb-1 shrink-0" />
                           <span className="text-[9px] uppercase font-bold text-amber-500 tracking-wider font-mono">Standby Ativado</span>
-                          <span className="text-[8px] text-slate-500 font-medium leading-tight max-w-xs">Smart TV em modo de espera / descanso do cliente.</span>
+                          <span className="text-[8px] text-slate-500 font-medium leading-tight max-w-xs">Smart TV em modo de descanso.</span>
                         </div>
                       ) : pairedScreen.contentType === 'stopped' ? (
-                        <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center text-center p-4 select-none">
+                        <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center text-center p-4 select-none animate-fade-in">
                           {/* Color bars preview */}
-                          <div className="flex w-24 h-6 border border-slate-900 rounded overflow-hidden opacity-40 mb-1 leading-none mx-auto">
+                          <div className="flex w-24 h-6 border border-slate-900 rounded overflow-hidden opacity-30 mb-1 leading-none mx-auto">
                             <div className="flex-1 bg-white h-full" />
                             <div className="flex-1 bg-yellow-400 h-full" />
                             <div className="flex-1 bg-teal-400 h-full" />
@@ -1489,14 +1569,14 @@ export default function ScreenManager() {
                             <div className="flex-1 bg-rose-500 h-full" />
                             <div className="flex-1 bg-blue-600 h-full" />
                           </div>
-                          <span className="text-[9px] uppercase font-bold text-rose-500 tracking-wider font-mono leading-none mt-1 shadow-xs">Exibição Parada</span>
-                          <span className="text-[8px] text-slate-500 mt-0.5">Transmissão interrompida de forma temporária.</span>
+                          <span className="text-[9px] uppercase font-bold text-rose-500 tracking-wider font-mono leading-none mt-1">Exibição Parada</span>
+                          <span className="text-[8px] text-slate-505 mt-0.5">Exibição desligada via painel remoto.</span>
                         </div>
                       ) : !simulatedAsset ? (
                         <div className="p-4 w-full h-full flex flex-col items-center justify-center bg-slate-900 border border-slate-800/80 text-center select-none space-y-1">
-                          <Tv className="w-6 h-6 text-indigo-400 animate-pulse mb-1" />
+                          <Tv className="w-5 h-5 text-indigo-455 animate-pulse mb-1" />
                           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">TV OCIOSA</span>
-                          <span className="text-[9px] text-slate-500 max-w-xs leading-normal">Selecione uma Playlist ou Mídia no painel ao lado para transmitir conteúdo em tempo real nesta tela.</span>
+                          <span className="text-[8.5px] text-slate-500 max-w-xs leading-normal">Escolha uma mídia ou playlist para sintonizar este painel.</span>
                         </div>
                       ) : (
                         <div className="w-full h-full relative flex flex-col justify-center overflow-hidden">
@@ -1509,7 +1589,7 @@ export default function ScreenManager() {
                               }}
                             >
                               <div 
-                                className="text-[10px] font-bold leading-normal whitespace-pre-line"
+                                className="text-[9.5px] font-bold leading-normal whitespace-pre-line"
                                 style={{ 
                                   textAlign: simulatedAsset.config?.textAlign || 'center',
                                   fontFamily: simulatedAsset.config?.fontFamily === 'sans' ? 'sans-serif' : simulatedAsset.config?.fontFamily === 'mono' ? 'monospace' : 'serif'
@@ -1550,48 +1630,126 @@ export default function ScreenManager() {
                           {/* OSD Ticker Overlay for playlists */}
                           {pairedScreen.contentType === 'playlist' && (
                             <div className="absolute top-2 left-2 bg-slate-900/85 backdrop-blur-xs py-0.5 px-1.5 rounded text-[8px] font-bold text-white tracking-wider uppercase border border-white/5">
-                              LOOP PLAYLIST • {playlistIndex + 1}/{playlists.find(p=>p.id===pairedScreen.contentId)?.items.length}
+                              PLAYLIST • {playlistIndex + 1}/{playlists.find(p=>p.id===pairedScreen.contentId)?.items.length}
                             </div>
                           )}
                         </div>
                       )}
 
                       {/* Display watermarks */}
-                      <div className="absolute bottom-2 right-2 bg-slate-950/70 p-1 rounded border border-white/5 text-[7px] text-slate-300 pointer-events-none uppercase tracking-widest font-mono">
-                        VITRION PLAYER
+                      <div className="absolute bottom-1.5 right-1.5 bg-slate-950/70 p-1 rounded border border-white/5 text-[6.5px] text-slate-400 pointer-events-none uppercase tracking-widest font-mono font-bold">
+                        VITRION LIVE PREVIEW
                       </div>
                     </div>
 
                     {/* Plastic Bezel stand foot at bottom */}
-                    <div className="w-10 h-2.5 bg-slate-850 mx-auto mt-1 rounded-sm border-b border-slate-900" />
-                    <div className="w-16 h-1 bg-slate-900 mx-auto rounded-sm shrink-0" />
+                    <div className="w-10 h-1.5 bg-slate-800 mx-auto mt-1 rounded-sm border-b border-slate-900" />
+                    <div className="w-14 h-0.5 bg-slate-900 mx-auto rounded-sm shrink-0" />
                   </div>
 
-                  <div className="bg-slate-50 border border-slate-150 rounded-lg p-3">
-                    <h5 className="text-[11px] font-bold text-slate-700">Painel Físico: {pairedScreen.name}</h5>
-                    <div className="grid grid-cols-2 gap-2 mt-2 text-[10px] text-slate-500">
-                      <div>
-                        <span className="font-medium text-slate-400 block">Canal Ativo</span>
-                        <span className="font-bold text-slate-700 capitalize">{pairedScreen.contentType}</span>
+                  {/* Sidebar Interactive Controls for selected screen */}
+                  <div className="bg-slate-50/70 border border-slate-205 rounded-xl p-4 space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 font-sans flex items-center gap-1">
+                        <Monitor className="w-3.5 h-3.5 text-indigo-500" />
+                        Ações Rápidas: {pairedScreen.name}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${pairedScreen.contentType !== 'stopped' ? 'bg-emerald-50 text-emerald-705 border border-emerald-100' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                        {pairedScreen.contentType !== 'stopped' ? 'Ativo' : 'Inativo'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      {/* Power Switch Button */}
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePower(pairedScreen.id, pairedScreen.contentType, pairedScreen.contentId)}
+                        className={`py-1.5 px-2.5 rounded-lg text-[11px] font-bold font-sans transition flex items-center justify-center gap-1 border cursor-pointer select-none ${
+                          pairedScreen.contentType !== 'stopped' 
+                            ? 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100/50' 
+                            : 'bg-emerald-55 bg-indigo-600 text-white border-transparent hover:bg-indigo-700'
+                        }`}
+                        title={pairedScreen.contentType !== 'stopped' ? 'Suspender transmissão' : 'Ligar transmissão'}
+                      >
+                        <Power className="w-3.5 h-3.5" />
+                        {pairedScreen.contentType !== 'stopped' ? 'Desligar' : 'Ligar'}
+                      </button>
+
+                      {/* Standby Moon Button */}
+                      <button
+                        type="button"
+                        onClick={() => assignContentToScreen(pairedScreen.id, 'standby', '')}
+                        disabled={pairedScreen.contentType === 'stopped'}
+                        className="py-1.5 px-2.5 bg-amber-50 border border-amber-200 hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg text-[11px] font-bold text-amber-800 transition flex items-center justify-center gap-1 cursor-pointer"
+                        title="Tela de descanso em modo standby"
+                      >
+                        💤 Standby
+                      </button>
+                    </div>
+
+                    {/* Quick Channel Content Sintonizer */}
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        Sintonizar Playlist/Mídia
+                      </label>
+                      <select
+                        value={`${pairedScreen.contentType}:${pairedScreen.contentId}`}
+                        disabled={pairedScreen.contentType === 'stopped'}
+                        onChange={(e) => {
+                          const [cType, cId] = e.target.value.split(':');
+                          assignContentToScreen(pairedScreen.id, cType as any, cId);
+                        }}
+                        className="w-full px-3 py-1.5 bg-white disabled:bg-slate-100 disabled:text-slate-400 border border-slate-200 rounded-lg text-xs font-bold leading-tight outline-none focus:ring-1 focus:ring-indigo-500 transition cursor-pointer"
+                      >
+                        <option value="idle:">-- Pausar Programação --</option>
+                        <option value="standby:">Standby (Exibir Marca/Logo)</option>
+                        <optgroup label="📋 Playlists do Sistema">
+                          {playlists.map((p) => (
+                            <option key={p.id} value={`playlist:${p.id}`}>
+                              🔁 {p.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="🎯 Biblioteca de Mídias">
+                          {assets
+                            .filter((a) => !a.clientId || !pairedScreen.clientId || a.clientId === pairedScreen.clientId)
+                            .map((a) => (
+                              <option key={a.id} value={`asset:${a.id}`}>
+                                📺 {a.name}
+                              </option>
+                            ))}
+                        </optgroup>
+                      </select>
+                    </div>
+
+                    {/* Quick Specs summary */}
+                    <div className="bg-white border border-slate-150 p-3 rounded-lg text-[9.5px] text-slate-500 font-mono space-y-1.5 leading-none">
+                      <div className="flex justify-between items-center">
+                        <span className="font-bold">CANAIS ATIVOS:</span>
+                        <span className="font-extrabold text-slate-800 uppercase bg-slate-100 border border-slate-200 px-1 py-0.2 rounded">{pairedScreen.contentType}</span>
                       </div>
-                      <div>
-                        <span className="font-medium text-slate-400 block">Sintonizado em</span>
-                        <span className="font-bold text-slate-700 truncate block">
-                          {pairedScreen.contentType === 'idle' && 'Nenhum'}
-                          {pairedScreen.contentType === 'asset' && (assets.find(a=>a.id===pairedScreen.contentId)?.name || 'Desconhecido')}
-                          {pairedScreen.contentType === 'playlist' && (playlists.find(p=>p.id===pairedScreen.contentId)?.name || 'Desconhecido')}
-                        </span>
+                      <div className="flex justify-between items-center">
+                        <span className="font-bold">CÓDIGO DE TRANSMISSÃO:</span>
+                        <span className="font-bold text-indigo-750 bg-indigo-50 border border-indigo-100 px-1 py-0.2 rounded">{pairedScreen.pairingCode}</span>
                       </div>
+                      {pairedScreen.lastActive && (
+                        <div className="flex justify-between items-center pt-0.5">
+                          <span className="font-bold">STATUS DO SINAL:</span>
+                          <span className="text-[9px] font-bold text-emerald-600 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse inline-block" /> ONLINE
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
               );
             })()
           ) : (
-            <div className="text-center py-10 bg-slate-55 border rounded flex flex-col items-center justify-center text-slate-400 gap-1.5 grayscale">
-              <Monitor className="w-8 h-8 opacity-60" />
-              <span className="text-[11px] font-bold text-slate-500 leading-none">SEM MONITOR SELECIONADO</span>
-              <span className="text-[9px] text-slate-400 max-w-[200px]">Clique em qualquer TV na lista para carregar seu sinal nesta aba de simulação.</span>
+            <div className="text-center py-12 bg-slate-50 border border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center text-slate-400 gap-1.5">
+              <Monitor className="w-8 h-8 opacity-40 shrink-0 text-slate-500" />
+              <span className="text-[11px] font-bold text-slate-500 leading-none uppercase tracking-wide">Nenhum Monitor Ativo</span>
+              <span className="text-[9.5px] text-slate-400 max-w-[210px] mx-auto leading-normal">Selecione uma Smart TV na lista de clientes ao lado para carregar sua exibição e liberar ações diretas.</span>
             </div>
           )}
         </div>
