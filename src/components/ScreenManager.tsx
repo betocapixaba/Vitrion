@@ -37,6 +37,7 @@ export default function ScreenManager() {
 
   // Pairing inputs
   const [pairingOpen, setPairingOpen] = useState(false);
+  const [pairingMode, setPairingMode] = useState<'pairCode' | 'createDirect'>('pairCode');
   const [pairingCodeInput, setPairingCodeInput] = useState('');
   const [screenNameInput, setScreenNameInput] = useState('');
   const [pairingClientId, setPairingClientId] = useState('');
@@ -313,6 +314,72 @@ export default function ScreenManager() {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
+
+    if (pairingMode === 'createDirect') {
+      if (!screenNameInput.trim()) {
+        setErrorMsg('Por favor, informe um nome para identificar a tela.');
+        return;
+      }
+
+      try {
+        let generatedCode = '';
+        let exists = true;
+        let attempts = 0;
+        
+        while (exists && attempts < 10) {
+          const possible = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+          let code = '';
+          for (let i = 0; i < 4; i++) {
+            code += possible.charAt(Math.floor(Math.random() * possible.length));
+          }
+          const checkDocRef = doc(db, 'screens', code);
+          const checkDoc = await getDoc(checkDocRef);
+          if (!checkDoc.exists()) {
+            generatedCode = code;
+            exists = false;
+          }
+          attempts++;
+        }
+
+        if (!generatedCode) {
+          generatedCode = 'TV' + Math.floor(100 + Math.random() * 900);
+        }
+
+        await setDoc(doc(db, 'screens', generatedCode), {
+          id: generatedCode,
+          name: screenNameInput.trim(),
+          pairingCode: generatedCode,
+          ownerId: currentUserId,
+          clientId: pairingClientId || '',
+          pairedAt: serverTimestamp(),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          status: 'offline',
+          contentType: 'idle',
+          contentId: '',
+        });
+
+        await logAdminAction(
+          'CREATE_SCREEN_DIRECT',
+          `Monitor: ${screenNameInput.trim()} (${generatedCode})`,
+          `Criou monitor direto sem limites de plano de plano para o cliente ID: ${pairingClientId || 'Geral'}.`
+        );
+
+        setSuccessMsg(`Monitor "${screenNameInput.trim()}" criado diretamente com o Cód: ${generatedCode}!`);
+        setPairingCodeInput('');
+        setScreenNameInput('');
+        setPairingClientId('');
+        setTimeout(() => {
+          setPairingOpen(false);
+          setSuccessMsg('');
+        }, 3000);
+
+      } catch (err) {
+        setErrorMsg('Falha ao criar monitor diretamente.');
+        console.error(err);
+      }
+      return;
+    }
 
     const parsedCode = pairingCodeInput.trim().toUpperCase();
     if (parsedCode.length !== 4) {
@@ -641,14 +708,17 @@ export default function ScreenManager() {
 
 
 
-  const totalScreens = screens.length;
-  const onlineScreens = screens.filter((screen) => {
+  const isScreenOnline = (screen: Screen) => {
     if (!screen.lastActive) return false;
     const seconds = (screen.lastActive as any).seconds;
     const lastActiveMs = seconds ? seconds * 1000 : new Date(screen.lastActive as any).getTime();
+    if (isNaN(lastActiveMs)) return false;
     const deltaSeconds = (Date.now() - lastActiveMs) / 1000;
     return deltaSeconds < 65;
-  }).length;
+  };
+
+  const totalScreens = screens.length;
+  const onlineScreens = screens.filter(isScreenOnline).length;
   const offlineScreens = Math.max(0, totalScreens - onlineScreens);
 
   return (
@@ -660,7 +730,12 @@ export default function ScreenManager() {
         </div>
         {!pairingOpen && (
           <button
-            onClick={() => setPairingOpen(true)}
+            onClick={() => {
+              setPairingMode('pairCode');
+              setPairingClientId('');
+              setScreenNameInput('');
+              setPairingOpen(true);
+            }}
             className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-sm transition cursor-pointer"
           >
             <Tv className="w-4 h-4" />
@@ -742,36 +817,77 @@ export default function ScreenManager() {
       {pairingOpen && (
         <form onSubmit={handlePair} className="bg-white rounded-xl border border-indigo-200/60 bg-indigo-50/10 p-5 space-y-4 animate-fade-in max-w-2xl">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-indigo-700 flex items-center gap-1">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-indigo-700 flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5" />
-              Conectar Monitor Digital
+              {pairingMode === 'createDirect' ? 'Criar ID de Monitor Direto' : 'Conectar Monitor Digital'}
             </h3>
             <button
               type="button"
               onClick={() => { setPairingOpen(false); setErrorMsg(''); }}
-              className="text-slate-400 hover:text-slate-600 text-xs font-semibold"
+              className="text-slate-400 hover:text-slate-600 text-xs font-semibold cursor-pointer"
             >
               Fechar
             </button>
           </div>
 
-          <p className="text-xs text-slate-600 leading-relaxed">
-            Abra o <strong>Modo Player</strong> em sua Smart TV (ou em uma nova aba do navegador). Copie o código de 4 caracteres gerado lá e insira abaixo para reivindicar o pareamento remoto:
-          </p>
+          {/* Segmented control for choosing registration type */}
+          <div className="bg-slate-100 p-0.5 rounded-lg flex items-center gap-1 select-none max-w-sm border border-slate-200">
+            <button
+              type="button"
+              onClick={() => { setPairingMode('pairCode'); setErrorMsg(''); }}
+              className={`flex-1 py-1 px-3 text-[10.5px] font-bold leading-none rounded-md transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                pairingMode === 'pairCode'
+                  ? 'bg-white text-indigo-700 font-extrabold shadow-3xs'
+                  : 'text-slate-550 hover:text-slate-800'
+              }`}
+            >
+              🔑 Parear por Código
+            </button>
+            <button
+              type="button"
+              onClick={() => { setPairingMode('createDirect'); setErrorMsg(''); }}
+              className={`flex-1 py-1 px-3 text-[10.5px] font-bold leading-none rounded-md transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                pairingMode === 'createDirect'
+                  ? 'bg-white text-indigo-700 font-extrabold shadow-3xs'
+                  : 'text-slate-550 hover:text-slate-800'
+              }`}
+            >
+              ⚡ Criar Direto (Sem Limites)
+            </button>
+          </div>
+
+          {pairingMode === 'pairCode' ? (
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Abra o <strong>Modo Player</strong> em sua Smart TV (ou em uma nova aba do navegador). Copie o código de 4 caracteres gerado lá e insira abaixo para reivindicar o pareamento remoto:
+            </p>
+          ) : (
+            <p className="text-xs text-indigo-900 leading-relaxed bg-indigo-50/50 p-2.5 rounded-lg border border-indigo-150/40">
+              <strong>Monitor Direto / Sem Código:</strong> Esta opção gera uma TV virtual diretamente, associando-a ao cliente selecionado imediatamente <strong>sem consumir limites de do plano e sem depender de código físico</strong>. Você poderá abrir o player usando o link "Player Remoto".
+            </p>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Código de 4 Dígitos *</label>
-              <input
-                type="text"
-                required
-                maxLength={4}
-                value={pairingCodeInput}
-                onChange={(e) => setPairingCodeInput(e.target.value)}
-                placeholder="Ex: F9XQ"
-                className="w-full px-3 py-2 border border-slate-200 bg-white rounded-lg text-xs font-bold font-mono tracking-wider focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              />
-            </div>
+            {pairingMode === 'pairCode' ? (
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Código de 4 Dígitos *</label>
+                <input
+                  type="text"
+                  required
+                  maxLength={4}
+                  value={pairingCodeInput}
+                  onChange={(e) => setPairingCodeInput(e.target.value)}
+                  placeholder="Ex: F9XQ"
+                  className="w-full px-3 py-2 border border-slate-200 bg-white rounded-lg text-xs font-bold font-mono tracking-wider focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
+            ) : (
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Código de 4 Dígitos</label>
+                <div className="w-full px-3 py-2 border border-slate-200 bg-slate-100 text-slate-500 rounded-lg text-xs font-bold font-mono tracking-wider select-none leading-none flex items-center justify-start h-9">
+                  [ Será gerado automático ]
+                </div>
+              </div>
+            )}
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Nome de Identificação *</label>
               <input
@@ -821,12 +937,12 @@ export default function ScreenManager() {
               type="submit"
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow transition cursor-pointer"
             >
-              Parear Conexão
+              {pairingMode === 'createDirect' ? 'Criar Monitor Direto' : 'Parear Conexão'}
             </button>
             <button
               type="button"
               onClick={() => setPairingOpen(false)}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border transition"
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg border transition cursor-pointer"
             >
               Cancelar
             </button>
@@ -920,13 +1036,7 @@ export default function ScreenManager() {
                     const isSelected = selectedScreenId === screen.id;
                     const associatedClient = clients.find((c) => c.id === screen.clientId);
                     
-                    // Determine online/offline based on lastActive timestamp (within 60s)
-                    let isOnline = false;
-                    if (screen.lastActive) {
-                      const lastActiveMs = screen.lastActive.seconds * 1000;
-                      const deltaSeconds = (Date.now() - lastActiveMs) / 1000;
-                      isOnline = deltaSeconds < 65; // Online if updated within 65 seconds
-                    }
+                    const isOnline = isScreenOnline(screen);
 
                     return (
                       <div 
@@ -1279,6 +1389,20 @@ export default function ScreenManager() {
                                   <button
                                     type="button"
                                     onClick={() => {
+                                      setPairingClientId(client.id);
+                                      setScreenNameInput(`Monitor - ${client.establishmentName}`);
+                                      setPairingMode('createDirect');
+                                      setPairingOpen(true);
+                                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                                    }}
+                                    className="px-2 py-1 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 font-bold text-[9px] tracking-wide rounded-md transition-all cursor-pointer shadow-3xs flex items-center gap-0.5 shrink-0"
+                                    title="Criar e Vincular Nova TV Diretamente para este Cliente (Sem Código e sem limites de plano)"
+                                  >
+                                    ➕ NOVA TV DIRETO
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
                                       setSimulatorClient(client);
                                       const firstScr = clientScreens[0];
                                       setSimulatorScreenId(firstScr ? firstScr.id : '');
@@ -1351,11 +1475,7 @@ export default function ScreenManager() {
                             <div className="space-y-1.5 max-h-[320px] overflow-y-auto pr-1.5 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
                               {clientScreens.map((scr) => {
                                 const isSelected = selectedScreenId === scr.id;
-                                let online = false;
-                                if (scr.lastActive) {
-                                  const lastMs = scr.lastActive.seconds * 1000;
-                                  online = (Date.now() - lastMs) / 1000 < 65;
-                                }
+                                const online = isScreenOnline(scr);
 
                                 return (
                                   <div
@@ -1732,14 +1852,18 @@ export default function ScreenManager() {
                         <span className="font-bold">CÓDIGO DE TRANSMISSÃO:</span>
                         <span className="font-bold text-indigo-750 bg-indigo-50 border border-indigo-100 px-1 py-0.2 rounded">{pairedScreen.pairingCode}</span>
                       </div>
-                      {pairedScreen.lastActive && (
-                        <div className="flex justify-between items-center pt-0.5">
-                          <span className="font-bold">STATUS DO SINAL:</span>
+                      <div className="flex justify-between items-center pt-0.5">
+                        <span className="font-bold">STATUS DO SINAL:</span>
+                        {isScreenOnline(pairedScreen) ? (
                           <span className="text-[9px] font-bold text-emerald-600 flex items-center gap-1">
                             <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse inline-block" /> ONLINE
                           </span>
-                        </div>
-                      )}
+                        ) : (
+                          <span className="text-[9px] font-bold text-slate-400 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 bg-slate-300 rounded-full inline-block" /> OFFLINE
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
