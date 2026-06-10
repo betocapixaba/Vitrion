@@ -298,14 +298,20 @@ export default function TVPlayer() {
       const unsubPlaylist = onSnapshot(playlistRef, (snap) => {
         if (snap.exists()) {
           const d = snap.data();
-          setPlaylistItems(d.items || []);
-          setPlaylistIndex(0);
+          const newItems = d.items || [];
+          setPlaylistItems((prev) => {
+            const isSame = prev.length === newItems.length &&
+              prev.every((item, idx) => item.assetId === newItems[idx].assetId && item.duration === newItems[idx].duration);
+            if (isSame) return prev;
+            setPlaylistIndex(0);
+            return newItems;
+          });
         }
       });
       return () => unsubPlaylist();
     }
 
-  }, [screenDoc]);
+  }, [screenDoc?.id, screenDoc?.ownerId, screenDoc?.contentType, screenDoc?.contentId]);
 
   // Loop timer for Playlist sequences
   useEffect(() => {

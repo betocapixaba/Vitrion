@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, where, onSnapshot, getDoc, updateDoc, deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType, logAdminAction } from '../lib/firebase';
-import { Screen, Playlist, Asset } from '../types';
+import { Screen, Playlist, Asset, PlaylistItem } from '../types';
 import { 
   Tv, Sparkles, Trash2, ShieldCheck, Play, HelpCircle, AlertCircle,
   Smartphone, Monitor, RefreshCw, Layers, CheckCircle, Info, ExternalLink,
@@ -62,6 +62,7 @@ export default function ScreenManager() {
   // Simulated playback state (for the embedded TV viewer)
   const [simulatedAsset, setSimulatedAsset] = useState<any>(null);
   const [playlistIndex, setPlaylistIndex] = useState(0);
+  const [simulatedPlaylistItems, setSimulatedPlaylistItems] = useState<PlaylistItem[]>([]);
 
   // Expanded/Retracted state for client display lists
   const [collapsedClientIds, setCollapsedClientIds] = useState<Record<string, boolean>>({});
@@ -263,51 +264,69 @@ export default function ScreenManager() {
   useEffect(() => {
     if (!selectedScreenId) {
       setSimulatedAsset(null);
+      setSimulatedPlaylistItems([]);
       return;
     }
 
     const currentScreen = screens.find((s) => s.id === selectedScreenId);
     if (!currentScreen || currentScreen.contentType === 'idle' || currentScreen.contentType === 'standby' || currentScreen.contentType === 'stopped') {
       setSimulatedAsset(null);
+      setSimulatedPlaylistItems([]);
       return;
     }
 
     if (currentScreen.contentType === 'asset') {
       const match = assets.find((a) => a.id === currentScreen.contentId);
       setSimulatedAsset(match || null);
+      setSimulatedPlaylistItems([]);
     } else if (currentScreen.contentType === 'playlist') {
       const activePlaylist = playlists.find((p) => p.id === currentScreen.contentId);
       if (!activePlaylist || activePlaylist.items.length === 0) {
         setSimulatedAsset(null);
+        setSimulatedPlaylistItems([]);
         return;
       }
 
-      // Start looping through playlist contents
-      setPlaylistIndex(0);
-      setSimulatedAsset(activePlaylist.items[0]);
-
-      let timeoutId: any;
-      
-      const runPlaylistTick = (index: number) => {
-        const item = activePlaylist.items[index];
-        setSimulatedAsset(item);
-        
-        const nextIndex = (index + 1) % activePlaylist.items.length;
-        const durationMs = (item.duration || 10) * 1000;
-
-        timeoutId = setTimeout(() => {
-          setPlaylistIndex(nextIndex);
-          runPlaylistTick(nextIndex);
-        }, durationMs);
-      };
-
-      runPlaylistTick(0);
-
-      return () => {
-        if (timeoutId) clearTimeout(timeoutId);
-      };
+      const newItems = activePlaylist.items || [];
+      setSimulatedPlaylistItems((prev) => {
+        const isSame = prev.length === newItems.length &&
+          prev.every((item, idx) => item.assetId === newItems[idx].assetId && item.duration === newItems[idx].duration);
+        if (isSame) return prev;
+        setPlaylistIndex(0);
+        return newItems;
+      });
     }
-  }, [selectedScreenId, screens, playlists, assets]);
+  }, [
+    selectedScreenId,
+    screens.find((s) => s.id === selectedScreenId)?.contentType,
+    screens.find((s) => s.id === selectedScreenId)?.contentId,
+    playlists,
+    assets
+  ]);
+
+  // Loop timer for Simulated Playlist sequences in Admin Panel
+  useEffect(() => {
+    if (simulatedPlaylistItems.length === 0) {
+      return;
+    }
+
+    const index = playlistIndex >= simulatedPlaylistItems.length ? 0 : playlistIndex;
+    if (index !== playlistIndex) {
+      setPlaylistIndex(index);
+    }
+
+    const activeItem = simulatedPlaylistItems[index];
+    setSimulatedAsset(activeItem);
+
+    const nextIndex = (index + 1) % simulatedPlaylistItems.length;
+    const itemDurationMs = (activeItem.duration || 10) * 1000;
+
+    const timeoutId = setTimeout(() => {
+      setPlaylistIndex(nextIndex);
+    }, itemDurationMs);
+
+    return () => clearTimeout(timeoutId);
+  }, [simulatedPlaylistItems, playlistIndex]);
 
   // Handle Pairing Linking
   const handlePair = async (e: React.FormEvent) => {
