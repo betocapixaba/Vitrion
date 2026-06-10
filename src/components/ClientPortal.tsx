@@ -848,6 +848,27 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden font-sans text-slate-300">
       
+      {/* Active Impersonation Bar */}
+      {typeof window !== 'undefined' && localStorage.getItem('vitrion_active_admin') && (
+        <div className="bg-gradient-to-r from-amber-600 to-amber-700 text-white px-6 py-2.5 text-xs flex items-center justify-between shadow-inner select-none font-medium border-b border-amber-850">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-200"></span>
+            </span>
+            <span className="font-mono uppercase font-bold tracking-wider bg-amber-800 px-1.5 py-0.5 rounded text-[9px]">Controle Admin</span>
+            <span>Você está controlando os <strong>Monitores & TVs</strong>, <strong>Biblioteca de Mídias</strong> e <strong>Playlist de Loop</strong> de <strong className="underline">{client.establishmentName}</strong>.</span>
+          </div>
+          <button
+            onClick={onLogout}
+            className="px-3 py-1 bg-white hover:bg-slate-50 text-amber-950 font-bold rounded-lg transition cursor-pointer flex items-center gap-1.5 hover:scale-103 text-[10px] shadow-sm uppercase shrink-0"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            Sair do Controle
+          </button>
+        </div>
+      )}
+
       {/* Top Banner Branding Header */}
       <div className="p-6 md:p-8 bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-900 border-b border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div className="space-y-2">
@@ -871,10 +892,14 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
 
         <button
           onClick={onLogout}
-          className="flex items-center gap-1.5 px-4 py-2 bg-slate-800/80 hover:bg-slate-800 hover:text-white border border-slate-700/60 rounded-xl text-xs font-semibold text-slate-300 transition duration-300 cursor-pointer"
+          className={`flex items-center gap-1.5 px-4 py-2 border rounded-xl text-xs font-semibold transition duration-300 cursor-pointer ${
+            typeof window !== 'undefined' && localStorage.getItem('vitrion_active_admin')
+              ? 'bg-amber-900/40 hover:bg-amber-900/60 border-amber-800/80 text-amber-200 hover:text-white'
+              : 'bg-slate-800/80 hover:bg-slate-800 hover:text-white border border-slate-700/60 text-slate-300'
+          }`}
         >
           <LogOut className="w-4 h-4 text-red-400" />
-          Desconectar do Portal
+          {typeof window !== 'undefined' && localStorage.getItem('vitrion_active_admin') ? 'Sair do Controle' : 'Desconectar do Portal'}
         </button>
       </div>
 

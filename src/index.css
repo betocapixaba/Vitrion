@@ -5,16 +5,36 @@ html, body, #root {
   padding: 0;
   width: 100%;
   height: 100%;
-  overflow: hidden;
+  overflow: auto;
   background-color: #000;
 }
 
-/* Hide scrollbars completely for smart displays */
+/* Elegant, modern scrollbar configuration that appears automatically on content overflow */
 ::-webkit-scrollbar {
-  display: none !important;
+  width: 8px;
+  height: 8px;
 }
 
-* {
-  scrollbar-width: none !important; /* Firefox */
-  -ms-overflow-style: none !important; /* IE 10+ */
+::-webkit-scrollbar-track {
+  background: transparent;
 }
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3); /* Slate-400 with opacity */
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.5); /* Violet-500 accent on hover */
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* Smooth Firefox integration */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+}
+

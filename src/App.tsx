@@ -375,13 +375,24 @@ export default function App() {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('vitrion_logged_client');
     }
+    const hadAdmin = !!user;
     setLoggedClient(null);
-    try {
-      await signOut(auth);
-    } catch (err) {
-      console.error('Erro ao deslogar cliente: ', err);
+    if (!hadAdmin) {
+      try {
+        await signOut(auth);
+      } catch (err) {
+        console.error('Erro ao deslogar cliente: ', err);
+      }
     }
     setAppMode('admin');
+  };
+
+  // Admin impersonating/controlling client handler
+  const handleImpersonateClient = (client: Client) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('vitrion_logged_client', JSON.stringify(client));
+    }
+    setLoggedClient(client);
   };
 
   // Client login submit handler
@@ -1336,7 +1347,7 @@ export default function App() {
             {activeTab === 'screens' && <ScreenManager />}
             {activeTab === 'media' && <MediaManager />}
             {activeTab === 'playlists' && <PlaylistManager />}
-            {activeTab === 'clients' && <ClientRegistry />}
+            {activeTab === 'clients' && <ClientRegistry onImpersonate={handleImpersonateClient} />}
             {activeTab === 'plans' && <PlanManager />}
             {activeTab === 'admins' && <AdminHistoryManager />}
           </div>

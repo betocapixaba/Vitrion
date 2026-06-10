@@ -55,7 +55,11 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
-export default function ClientRegistry() {
+interface ClientRegistryProps {
+  onImpersonate?: (client: Client) => void;
+}
+
+export default function ClientRegistry({ onImpersonate }: ClientRegistryProps) {
   const [clients, setClients] = useState<Client[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
@@ -895,6 +899,24 @@ export default function ClientRegistry() {
                               <Tv className="w-3.5 h-3.5 shrink-0" />
                               <span>Remover Exibição</span>
                             </button>
+                          </div>
+
+                          {/* Client Portal Impersonation Access block (Monitores, Mídias, Playlists) */}
+                          <div className="bg-slate-55 border border-slate-200 p-3 rounded-xl space-y-1.5 mt-2 bg-gradient-to-br from-indigo-50/50 via-white to-slate-50/50">
+                            <span className="text-[9px] font-bold text-indigo-700 font-mono uppercase tracking-wider block">Controle do Cliente</span>
+                            <p className="text-[10px] text-slate-550 leading-tight">
+                              Gerencie a <strong className="text-slate-700 font-semibold">Biblioteca de Mídias</strong>, configure as <strong className="text-slate-700 font-semibold">Playlists de Loop</strong> e controle os <strong className="text-slate-700 font-semibold">Monitores & TVs</strong> deste cliente acessando diretamente o terminal dele:
+                            </p>
+                            {onImpersonate && (
+                              <button
+                                type="button"
+                                onClick={() => onImpersonate(client)}
+                                className="py-1.5 px-2.5 bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-650 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer w-full shadow-xs hover:shadow-md hover:scale-[1.01]"
+                              >
+                                <Tv className="w-3.5 h-3.5" />
+                                <span>Acessar Painel do Cliente</span>
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
