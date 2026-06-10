@@ -1143,16 +1143,6 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
                               )}
                             </button>
                             
-                            <a
-                              href={`/?mode=player&screenId=${screen.id}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-0.5 ml-1 text-indigo-400 hover:underline hover:text-indigo-300"
-                              title="Abrir TV Player simulado desta tela em outra aba"
-                            >
-                              <ExternalLink className="w-3 h-3" /> Player Externo
-                            </a>
-
                             <button
                               type="button"
                               onClick={(e) => {

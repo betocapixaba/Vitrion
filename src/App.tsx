@@ -1025,17 +1025,7 @@ export default function App() {
               </form>
             )}
 
-            {/* Link to TV Player */}
-            <div className="pt-4 border-t border-white/5 text-center space-y-1.5">
-              <p className="text-[10px] text-slate-500">Deseja parear ou sintonizar uma tela de TV neste ambiente?</p>
-              <button
-                onClick={() => setAppMode('player')}
-                className="text-xs text-indigo-400 hover:text-indigo-300 inline-flex items-center gap-1 hover:underline cursor-pointer font-semibold mx-auto"
-              >
-                <Monitor className="w-3.5 h-3.5" />
-                Iniciar Reprodutor de Tela (Modo TV Player) &rarr;
-              </button>
-            </div>
+
           </div>
         </div>
 
