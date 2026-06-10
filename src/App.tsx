@@ -48,7 +48,15 @@ export default function App() {
   const [authError, setAuthError] = useState('');
   
   // App initialization states
-  const [showSplash, setShowSplash] = useState(true);
+  const [showSplash, setShowSplash] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get('mode') === 'player' || p.get('player') === 'true') {
+        return false;
+      }
+    }
+    return true;
+  });
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
 
   // Displays counters state for "Sincronizador Múltiplo de Displays"
@@ -104,11 +112,15 @@ export default function App() {
 
   // Splash screen timeout loop running for 3 seconds
   useEffect(() => {
+    if (appMode === 'player') {
+      setShowSplash(false);
+      return;
+    }
     const timer = setTimeout(() => {
       setShowSplash(false);
     }, 3000);
     return () => clearTimeout(timer);
-  }, []);
+  }, [appMode]);
 
   // Client and Unified authentication states
   const [loggedClient, setLoggedClient] = useState<Client | null>(() => {

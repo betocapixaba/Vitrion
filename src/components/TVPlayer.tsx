@@ -367,6 +367,50 @@ export default function TVPlayer() {
     return () => window.removeEventListener('keydown', handleControlKeys);
   }, [screenId]);
 
+  // Auto-fullscreen on load and on any first user interaction (touch, key, click)
+  useEffect(() => {
+    let attempted = false;
+
+    const autoEnter = () => {
+      if (attempted) return;
+      if (!document.fullscreenElement && containerRef.current) {
+        containerRef.current.requestFullscreen()
+          .then(() => {
+            setIsFullscreen(true);
+            attempted = true;
+            cleanup();
+          })
+          .catch((err) => {
+            console.log("Auto fullscreen request blocked or postponed till next interaction:", err);
+          });
+      } else if (document.fullscreenElement) {
+        attempted = true;
+        cleanup();
+      }
+    };
+
+    const cleanup = () => {
+      window.removeEventListener('click', autoEnter);
+      window.removeEventListener('keydown', autoEnter);
+      window.removeEventListener('touchstart', autoEnter);
+      window.removeEventListener('mousedown', autoEnter);
+    };
+
+    // Listen to all interaction events
+    window.addEventListener('click', autoEnter);
+    window.addEventListener('keydown', autoEnter);
+    window.addEventListener('touchstart', autoEnter);
+    window.addEventListener('mousedown', autoEnter);
+
+    // Attempt immediately (some modern smart setups allow it under specific criteria/contexts)
+    const timeoutId = setTimeout(autoEnter, 1200);
+
+    return () => {
+      cleanup();
+      clearTimeout(timeoutId);
+    };
+  }, [screenId]);
+
   // 1. Loading screen
   if (!screenId || !screenDoc) {
     return (

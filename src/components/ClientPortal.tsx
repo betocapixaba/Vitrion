@@ -84,6 +84,7 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
 
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [activeTab, setActiveTab] = useState<'screens' | 'assets' | 'playlists'>('screens');
   
   // New Display Form States
   const [newDisplayName, setNewDisplayName] = useState('');
@@ -659,6 +660,7 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
 
   // Pop up edit state for specified playlist
   const handleStartEditPlaylist = (playlist: Playlist) => {
+    setActiveTab('playlists');
     setEditingPlaylist(playlist);
     setPlaylistName(playlist.name);
     setPlaylistItems(playlist.items);
@@ -938,11 +940,53 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
           </div>
         </div>
 
+        {/* Reorganized Segmented Workspace Tab Bar */}
+        <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-850 gap-1 overflow-x-auto shrink-0 select-none">
+          <button
+            type="button"
+            onClick={() => setActiveTab('screens')}
+            className={`flex-1 min-w-[130px] md:min-w-0 py-2.5 text-center text-xs font-bold rounded-lg transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 ${
+              activeTab === 'screens'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/40'
+            }`}
+          >
+            <Tv className="w-4 h-4" />
+            Monitores & TVs ({screens.length})
+          </button>
+          
+          <button
+            type="button"
+            onClick={() => setActiveTab('assets')}
+            className={`flex-1 min-w-[130px] md:min-w-0 py-2.5 text-center text-xs font-bold rounded-lg transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 ${
+              activeTab === 'assets'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/40'
+            }`}
+          >
+            <ImageIcon className="w-4 h-4" />
+            Biblioteca de Mídias ({assets.length})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('playlists')}
+            className={`flex-1 min-w-[130px] md:min-w-0 py-2.5 text-center text-xs font-bold rounded-lg transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 ${
+              activeTab === 'playlists'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/40'
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            Playlists de Loop ({playlists.length})
+          </button>
+        </div>
+
         {/* Dashboard Grid split into Two Main Sections */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className={`grid grid-cols-1 gap-8 ${activeTab === 'playlists' ? 'hidden' : 'block'}`}>
           
           {/* COLUMN 1: Displays / Screens (LGs-7/12) */}
-          <div className="lg:col-span-7 space-y-6">
+          <div className={`space-y-6 ${activeTab === 'screens' ? 'block' : 'hidden'}`}>
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <span className="block text-xs uppercase font-mono tracking-wider text-indigo-400 font-bold">Seção 01</span>
@@ -1103,7 +1147,7 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
                 </div>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-2">
                 {screens.map((screen) => {
                   const showingAsset = assets.find(a => a.id === screen.contentId);
                   const showingPlaylist = playlists.find(p => p.id === screen.contentId);
@@ -1465,7 +1509,7 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
           </div>
 
           {/* COLUMN 2: Product Images & Assets (LGs-5/12) */}
-          <div className="lg:col-span-5 space-y-6">
+          <div className={`space-y-6 ${activeTab === 'assets' ? 'block' : 'hidden'}`}>
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
                 <span className="block text-xs uppercase font-mono tracking-wider text-indigo-400 font-bold">Seção 02</span>
@@ -1713,7 +1757,7 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
                 <p className="text-xs text-slate-500">Nenhum produto cadastrado na vitrine.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[500px] overflow-y-auto pr-1.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 pb-2">
                 {assets.map((asset) => (
                   <div 
                     key={asset.id} 
@@ -1777,7 +1821,10 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
         </div>
 
         {/* Section 03: Playlists de Exibição */}
-        <div id="playlist-management-section" className="border-t border-slate-800/80 pt-8 space-y-6">
+        <div 
+          id="playlist-management-section" 
+          className={`border-t border-slate-800/80 pt-8 space-y-6 ${activeTab === 'playlists' ? 'block animate-fade-in' : 'hidden'}`}
+        >
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="space-y-0.5">
               <span className="block text-xs uppercase font-mono tracking-wider text-indigo-400 font-bold">Seção 03</span>
