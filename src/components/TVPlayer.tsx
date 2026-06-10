@@ -20,6 +20,122 @@ function generatePairingCode(): string {
   return result;
 }
 
+// Helpers for high-durability persistence across smart TVs and browsers (e.g. Amazon Silk browser, Tizen, etc.)
+function initDB(): Promise<any> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined' || !window.indexedDB) {
+      reject();
+      return;
+    }
+    const request = indexedDB.open('VitrionTVStorage', 1);
+    request.onupgradeneeded = (e: any) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('settings')) {
+        db.createObjectStore('settings');
+      }
+    };
+    request.onsuccess = (e: any) => {
+      resolve(e.target.result);
+    };
+    request.onerror = () => {
+      reject();
+    };
+  });
+}
+
+function getIndexedDBValue(key: string): Promise<string | null> {
+  return initDB().then(db => {
+    return new Promise<string | null>((resolve) => {
+      const transaction = db.transaction('settings', 'readonly');
+      const store = transaction.objectStore('settings');
+      const request = store.get(key);
+      request.onsuccess = () => {
+        resolve(request.result || null);
+      };
+      request.onerror = () => {
+        resolve(null);
+      };
+    });
+  }).catch(() => null);
+}
+
+function setIndexedDBValue(key: string, value: string): Promise<void> {
+  return initDB().then(db => {
+    return new Promise<void>((resolve) => {
+      const transaction = db.transaction('settings', 'readwrite');
+      const store = transaction.objectStore('settings');
+      const request = store.put(value, key);
+      request.onsuccess = () => resolve();
+      request.onerror = () => resolve();
+    });
+  }).catch(() => {});
+}
+
+function deleteIndexedDBValue(key: string): Promise<void> {
+  return initDB().then(db => {
+    return new Promise<void>((resolve) => {
+      const transaction = db.transaction('settings', 'readwrite');
+      const store = transaction.objectStore('settings');
+      const request = store.delete(key);
+      request.onsuccess = () => resolve();
+      request.onerror = () => resolve();
+    });
+  }).catch(() => {});
+}
+
+function getCookie(name: string): string | null {
+  const nameEQ = name + "=";
+  const ca = document.cookie.split(';');
+  for (let i = 0; i < ca.length; i++) {
+    let c = ca[i];
+    while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+    if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+  }
+  return null;
+}
+
+function setCookie(name: string, value: string, days: number = 365 * 10) {
+  let expires = "";
+  if (days) {
+    const date = new Date();
+    date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+    expires = "; expires=" + date.toUTCString();
+  }
+  document.cookie = name + "=" + (value || "") + expires + "; path=/; SameSite=Lax";
+}
+
+function eraseCookie(name: string) {
+  document.cookie = name + '=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT; SameSite=Lax';
+}
+
+function getStoredScreenId(): string | null {
+  if (typeof window === 'undefined') return null;
+  let id = localStorage.getItem('op_player_screen_id');
+  if (!id) {
+    id = getCookie('op_player_screen_id');
+    if (id) {
+      localStorage.setItem('op_player_screen_id', id);
+    }
+  } else {
+    setCookie('op_player_screen_id', id);
+  }
+  return id;
+}
+
+function setStoredScreenId(id: string) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('op_player_screen_id', id);
+  setCookie('op_player_screen_id', id);
+  setIndexedDBValue('op_player_screen_id', id);
+}
+
+function removeStoredScreenId() {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem('op_player_screen_id');
+  eraseCookie('op_player_screen_id');
+  deleteIndexedDBValue('op_player_screen_id');
+}
+
 export default function TVPlayer() {
   const [screenId, setScreenId] = useState<string | null>(null);
   const [screenDoc, setScreenDoc] = useState<Screen | null>(null);
@@ -126,7 +242,7 @@ export default function TVPlayer() {
     return () => clearInterval(id);
   }, []);
 
-  // Initialization: check localstorage for paired credentials, or create a brand new unauthenticated screen code
+  // Initialization: check localstorage and cookies for paired credentials, or create a brand new unauthenticated screen code
   useEffect(() => {
     const initScreen = async () => {
       setErrorMessage('');
@@ -134,7 +250,19 @@ export default function TVPlayer() {
       const urlParams = new URLSearchParams(window.location.search);
       const urlScreenId = urlParams.get('screenId') || urlParams.get('id');
       
-      let code = urlScreenId || localStorage.getItem('op_player_screen_id');
+      let code = urlScreenId;
+      if (!code) {
+        const idbCode = await getIndexedDBValue('op_player_screen_id');
+        if (idbCode) {
+          code = idbCode;
+          if (!localStorage.getItem('op_player_screen_id') || !getCookie('op_player_screen_id')) {
+            localStorage.setItem('op_player_screen_id', idbCode);
+            setCookie('op_player_screen_id', idbCode);
+          }
+        } else {
+          code = getStoredScreenId();
+        }
+      }
 
       const registerNewScreen = async (newCode: string, attempt = 1): Promise<boolean> => {
         if (attempt > 3) {
@@ -156,7 +284,7 @@ export default function TVPlayer() {
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           });
-          localStorage.setItem('op_player_screen_id', newCode);
+          setStoredScreenId(newCode);
           setScreenId(newCode);
           return true;
         } catch (err: any) {
@@ -176,7 +304,7 @@ export default function TVPlayer() {
           const snap = await getDoc(ref);
           if (snap.exists()) {
             if (urlScreenId) {
-              localStorage.setItem('op_player_screen_id', urlScreenId);
+              setStoredScreenId(urlScreenId);
             }
             setScreenId(code);
           } else {
@@ -220,7 +348,7 @@ export default function TVPlayer() {
       const ref = doc(db, 'screens', code);
       const snap = await getDoc(ref);
       if (snap.exists()) {
-        localStorage.setItem('op_player_screen_id', code);
+        setStoredScreenId(code);
         setScreenId(code);
         setInitTrigger(prev => prev + 1);
         setManualCode('');
@@ -267,7 +395,7 @@ export default function TVPlayer() {
       (snapshot) => {
         if (!snapshot.exists()) {
           console.warn("Screen document was deleted. Resetting and self-healing...");
-          localStorage.removeItem('op_player_screen_id');
+          removeStoredScreenId();
           setScreenId(null);
           setScreenDoc(null);
           setActiveAsset(null);
@@ -472,7 +600,7 @@ export default function TVPlayer() {
               </button>
               <button
                 onClick={() => {
-                  localStorage.removeItem('op_player_screen_id');
+                  removeStoredScreenId();
                   setInitTrigger(prev => prev + 1);
                 }}
                 className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-semibold transition"

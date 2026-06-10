@@ -461,6 +461,32 @@ export default function App() {
         // Option A: Just mirror screen in this browser right now!
         if (typeof window !== 'undefined') {
           localStorage.setItem('op_player_screen_id', code);
+          // Also write to permanent cookie so smart TVs/Amazon Silk retain it securely
+          try {
+            const date = new Date();
+            date.setTime(date.getTime() + (365 * 10 * 24 * 60 * 60 * 1000));
+            document.cookie = `op_player_screen_id=${code}; expires=${date.toUTCString()}; path=/; SameSite=Lax`;
+          } catch (e) {
+            console.warn("Could not save backup cookie:", e);
+          }
+          // Also back up securely to IndexedDB for Fire TV OS and Silk durability
+          try {
+            const req = indexedDB.open('VitrionTVStorage', 1);
+            req.onupgradeneeded = (e: any) => {
+              const db = e.target.result;
+              if (!db.objectStoreNames.contains('settings')) {
+                db.createObjectStore('settings');
+              }
+            };
+            req.onsuccess = (e: any) => {
+              const db = e.target.result;
+              const transaction = db.transaction('settings', 'readwrite');
+              const store = transaction.objectStore('settings');
+              store.put(code, 'op_player_screen_id');
+            };
+          } catch (err) {
+            console.warn("Could not write backup to IndexedDB:", err);
+          }
         }
         setPairSuccess('Sintonização concluída! Abrindo reprodutor nesta tela...');
         setTimeout(() => {
@@ -939,7 +965,7 @@ export default function App() {
                         Espelhar nesta tela
                       </div>
                       <p className="text-[9.5px] text-slate-450 mt-1 leading-snug">
-                        Simula a Smart TV direto neste navegador para testes.
+                        Sincronize sua Smart TV e exiba a imagem.
                       </p>
                     </button>
 
