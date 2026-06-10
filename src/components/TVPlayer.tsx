@@ -30,6 +30,11 @@ export default function TVPlayer() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [initTrigger, setInitTrigger] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
+  
+  // Manual synchronization inputs for existing screens
+  const [manualCode, setManualCode] = useState('');
+  const [isConnectingManual, setIsConnectingManual] = useState(false);
+  const [manualError, setManualError] = useState('');
 
   // Screen Wake Lock API State
   const [wakeLockActive, setWakeLockActive] = useState(false);
@@ -194,6 +199,41 @@ export default function TVPlayer() {
 
     initScreen();
   }, [initTrigger]);
+
+  // Connect to an existing pre-configured platform screen by its unique code/ID
+  const handleConnectManualCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setManualError('');
+    const code = manualCode.trim().toUpperCase();
+    if (!code) {
+      setManualError('Por favor, informe seu código.');
+      return;
+    }
+
+    if (code.length < 4) {
+      setManualError('O código do display deve conter pelo menos 4 caracteres.');
+      return;
+    }
+
+    setIsConnectingManual(true);
+    try {
+      const ref = doc(db, 'screens', code);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        localStorage.setItem('op_player_screen_id', code);
+        setScreenId(code);
+        setInitTrigger(prev => prev + 1);
+        setManualCode('');
+      } else {
+        setManualError('Código não cadastrado ou inválido. Cadastre este monitor no seu Painel.');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setManualError('Falha ao conectar: erro de rede ou permissão recusada.');
+    } finally {
+      setIsConnectingManual(false);
+    }
+  };
 
   // Heartbeat Loop (pulse online status to firestore every 15 seconds)
   useEffect(() => {
@@ -546,6 +586,45 @@ export default function TVPlayer() {
                       <p className="text-[10px] text-slate-350 mt-1.5 leading-snug font-semibold text-white">INSIRA o código acima para autorizar o sinal!</p>
                     </div>
                   </div>
+                </div>
+
+                {/* Sintonizar via Código Manual (Direct pairing by entering existing code) */}
+                <div className="border-t border-white/10 pt-4 mt-2">
+                  <form onSubmit={handleConnectManualCode} className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Ou digite seu Código Existente de TV:
+                      </label>
+                      <span className="text-[9px] text-indigo-400 font-mono font-semibold">Sintonizar Código da Plataforma</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Ex: ABCD"
+                        value={manualCode}
+                        onChange={(e) => setManualCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10))}
+                        className="flex-1 min-w-0 bg-black/60 border border-slate-700 text-white text-xs px-3.5 py-2.5 rounded-lg focus:outline-hidden focus:border-indigo-500 uppercase tracking-widest font-mono font-bold"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isConnectingManual}
+                        className="bg-indigo-600 hover:bg-indigo-505 disabled:bg-indigo-800/50 text-white text-xs font-bold px-4 py-2.5 rounded-lg flex items-center gap-1.5 transition cursor-pointer shrink-0"
+                      >
+                        {isConnectingManual ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                        )}
+                        <span>Sintonizar & Gravar</span>
+                      </button>
+                    </div>
+                    {manualError && (
+                      <p className="text-[11px] text-rose-400 font-medium flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                        {manualError}
+                      </p>
+                    )}
+                  </form>
                 </div>
               </div>
             </div>
