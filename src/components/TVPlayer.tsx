@@ -715,44 +715,14 @@ export default function TVPlayer() {
       </AnimatePresence>
 
       {/* Embedded hidden control bar that appears on cursor movements at the very bottom corner */}
-      <div className="absolute bottom-4 left-4 z-40 bg-slate-950/80 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/5 opacity-15 hover:opacity-100 transition duration-300 flex items-center gap-3">
-        <div className="flex items-center gap-1.5 shrink-0">
-          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">TV: {screenDoc.name}</span>
-        </div>
-        
-        <div className="h-3 w-px bg-white/10" />
-        
-        {/* Anti-Sleep Activator & Status Indicator */}
-        <button
-          type="button"
-          onClick={requestWakeLock}
-          className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase transition border cursor-pointer ${
-            wakeLockActive 
-              ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20 hover:bg-cyan-500/20' 
-              : 'bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20 animate-pulse'
-          }`}
-          title={wakeLockActive ? "Anti-Sleep Ativo: Esta tela não desligará automaticamente!" : "Anti-Sleep Inativo. Clique para forçar ativação"}
-        >
-          <Zap className={`w-3 h-3 ${wakeLockActive ? 'animate-pulse text-cyan-400' : 'text-amber-400'}`} />
-          <span>Anti-Sleep: {wakeLockActive ? 'Ativo' : 'Ativar'}</span>
-        </button>
-
-        <div className="h-3 w-px bg-white/10" />
-        
+      <div className="absolute bottom-4 left-4 z-40 bg-slate-950/80 backdrop-blur-md p-1.5 rounded-lg border border-white/5 opacity-0 hover:opacity-100 transition duration-300 flex items-center">
         <button
           onClick={handleToggleFullscreen}
-          className="text-white hover:text-indigo-400 transition cursor-pointer"
+          className="text-white hover:text-indigo-400 p-1 transition cursor-pointer"
           title="Alternar Tela Cheia"
         >
           <Maximize className="w-3.5 h-3.5" />
         </button>
-      </div>
-
-      {/* Live OSD clock corner header for visual polished aesthetics */}
-      <div className="absolute top-4 right-4 z-40 bg-slate-950/40 backdrop-blur-xs px-3 py-1 rounded text-xs font-mono font-bold font-semibold text-white/90 border border-white/5 flex items-center gap-2">
-        <Clock className="w-3.5 h-3.5 mt-0.5" />
-        <span>{realtimeClock}</span>
       </div>
     </div>
   );

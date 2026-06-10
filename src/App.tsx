@@ -587,14 +587,6 @@ export default function App() {
     return (
       <div className="relative">
         <TVPlayer />
-        
-        {/* Helper visual link to return to login if user is testing and doesn't know how to go back */}
-        <button
-          onClick={() => setAppMode('admin')}
-          className="absolute bottom-4 right-4 z-50 bg-slate-900/80 hover:bg-slate-800 border border-white/5 text-slate-400 hover:text-white backdrop-blur-xs px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition duration-200 shadow-lg cursor-pointer"
-        >
-          Voltar ao Painel
-        </button>
       </div>
     );
   }

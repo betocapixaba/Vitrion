@@ -2095,6 +2095,41 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
                           </div>
                         ))}
                       </div>
+
+                      {/* Quick screen pairing/binding selector for looping playlist */}
+                      <div className="border-t border-slate-900 pt-3 mt-1.5 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                            <Tv className="w-3.5 h-3.5 text-indigo-400" />
+                            Transmitir no canais de TV:
+                          </span>
+                        </div>
+                        {screens.length === 0 ? (
+                          <p className="text-[10px] text-slate-505 italic">Nenhuma TV cadastrada nesta conta. Ative uma TV na Seção 01.</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {screens.map((screen) => {
+                              const isActive = screen.contentType === 'playlist' && screen.contentId === playlist.id;
+                              return (
+                                <button
+                                  key={screen.id}
+                                  type="button"
+                                  onClick={() => handleAssignPlaylist(screen.id, playlist.id)}
+                                  className={`text-[9.5px] px-2 py-1 rounded-md font-bold uppercase transition duration-200 cursor-pointer flex items-center gap-1.5 ${
+                                    isActive
+                                      ? 'bg-indigo-650 text-white font-bold border border-indigo-550 shadow'
+                                      : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-white hover:bg-slate-800'
+                                  }`}
+                                  title={isActive ? `Playlist transmitindo em ${screen.name}` : `Sintonizar no monitor ${screen.name}`}
+                                >
+                                  <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
+                                  {screen.name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
