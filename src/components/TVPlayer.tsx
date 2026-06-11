@@ -10,6 +10,9 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
+// @ts-ignore
+import vitrionWallpaper from '../assets/images/vitrion_wallpaper_1781184254895.jpg';
+
 // Generates a random uppercase pairing code (4 characters)
 function generatePairingCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No confusing chars like I, O, 0, 1
@@ -686,9 +689,16 @@ export default function TVPlayer() {
     return (
       <div ref={containerRef} className="min-h-screen w-full bg-slate-950 flex flex-col justify-between p-6 sm:p-8 text-white relative overflow-hidden font-sans select-none">
         
-        {/* Abstract futuristic glowing gradients */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
+        {/* Ambient brand wallpaper background */}
+        <div className="absolute inset-0 z-0">
+          <img 
+            src={vitrionWallpaper} 
+            alt="" 
+            className="w-full h-full object-cover opacity-20"
+            referrerPolicy="no-referrer"
+          />
+          <div className="absolute inset-0 bg-slate-950/75 backdrop-blur-xs" />
+        </div>
 
         <header className="flex items-center justify-between border-b border-white/5 pb-4 shrink-0 z-10">
           <div className="flex items-center gap-2">
@@ -891,20 +901,14 @@ export default function TVPlayer() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-[#04060e]"
+            className="absolute inset-0 bg-black flex items-center justify-center"
           >
-            <div className="relative flex items-center justify-center">
-              <div className="absolute w-24 h-24 bg-amber-500/10 rounded-full animate-pulse blur-md" />
-              <div className="relative w-16 h-16 bg-slate-900 border border-slate-800 rounded-full flex items-center justify-center shadow-inner">
-                <Tv className="w-7 h-7 text-amber-500 animate-pulse shrink-0" />
-              </div>
-            </div>
-            
-            <span className="text-xs uppercase font-extrabold tracking-widest text-amber-500 font-mono mt-6">Modo Standby • Economia de Energia</span>
-            <h2 className="text-xl font-bold tracking-tight text-slate-300 mt-2">{screenDoc.name}</h2>
-            <p className="text-xs text-slate-500 mt-1.5 max-w-xs leading-relaxed">
-              O monitor está em modo de espera. Você pode ativá-lo novamente a qualquer momento através do seu Painel Gerenciador.
-            </p>
+            <img 
+              src={vitrionWallpaper} 
+              alt="Modo Standby" 
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+            />
           </motion.div>
         ) : screenDoc.contentType === 'stopped' ? (
           <motion.div 
@@ -912,29 +916,14 @@ export default function TVPlayer() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-slate-950"
+            className="absolute inset-0 bg-black flex items-center justify-center"
           >
-            <div className="flex w-64 h-24 rounded-xl overflow-hidden border border-slate-800 opacity-50 mb-6 shrink-0 shadow-lg select-none">
-              <div className="flex-1 bg-white h-full" />
-              <div className="flex-1 bg-yellow-400 h-full" />
-              <div className="flex-1 bg-cyan-400 h-full" />
-              <div className="flex-1 bg-green-400 h-full" />
-              <div className="flex-1 bg-purple-500 h-full" />
-              <div className="flex-1 bg-red-500 h-full" />
-              <div className="flex-1 bg-blue-600 h-full" />
-            </div>
-
-            <div className="relative flex items-center justify-center mb-2">
-              <div className="w-12 h-12 bg-rose-500/10 border border-rose-500/20 rounded-full flex items-center justify-center text-rose-500 shrink-0">
-                <X className="w-5 h-5" />
-              </div>
-            </div>
-            
-            <span className="text-xs uppercase font-bold tracking-widest text-rose-450 font-mono">Modo Stop • Exibição Parada</span>
-            <h2 className="text-xl font-bold tracking-tight text-white mt-1">Exibição Parada</h2>
-            <p className="text-xs text-slate-400 mt-1 max-w-xs leading-normal">
-              A transmissão foi interrompida pelo administrador. Recupere ou mude a sintonização no painel para reativar.
-            </p>
+            <img 
+              src={vitrionWallpaper} 
+              alt="Transmissão Parada" 
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+            />
           </motion.div>
         ) : !activeAsset ? (
           <motion.div 
@@ -942,18 +931,14 @@ export default function TVPlayer() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-slate-950"
+            className="absolute inset-0 bg-black flex items-center justify-center"
           >
-            {/* Ambient corporate wallpaper loop */}
-            <div className="absolute top-0 right-0 w-[50vw] h-[50vh] bg-indigo-700/5 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-[55vw] h-[55vh] bg-slate-700/5 rounded-full blur-3xl pointer-events-none" />
-            
-            <Tv className="w-16 h-16 text-indigo-500 animate-pulse mb-4 shrink-0" />
-            <span className="text-xs uppercase font-bold tracking-widest text-slate-500 font-mono">Monitor Ativo • Sintonizado</span>
-            <h2 className="text-xl font-bold tracking-tight text-white mt-1.5">{screenDoc.name}</h2>
-            <p className="text-xs text-slate-400 mt-1 max-w-xs leading-normal">
-              Aguardando que o administrador publique um conteúdo de transmissão ou playlist ativa sobre este monitor.
-            </p>
+            <img 
+              src={vitrionWallpaper} 
+              alt="Aguardando Sinal" 
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+            />
           </motion.div>
         ) : (
           <motion.div

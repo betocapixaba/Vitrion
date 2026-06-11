@@ -16,6 +16,8 @@ import PlanManager from './components/PlanManager';
 import ClientSelfRegistration from './components/ClientSelfRegistration';
 import AdminHistoryManager from './components/AdminHistoryManager';
 import { VitrionLogo } from './components/VitrionLogo';
+// @ts-ignore
+import vitrionWallpaper from './assets/images/vitrion_wallpaper_1781184254895.jpg';
 import { Client } from './types';
 import { 
   Tv, Layers, LogOut, ShieldCheck, HelpCircle, Eye,
@@ -579,36 +581,32 @@ export default function App() {
   // 3-second immersive startup screen with high-fidelity brand logomark and tagline as requested
   if (showSplash) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden select-none font-sans">
-        {/* Ambient Grid Backdrop */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(99,102,241,0.14),rgba(255,255,255,0))]" />
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-between p-8 relative overflow-hidden select-none font-sans">
+        {/* Full-screen brand wallpaper */}
+        <div className="absolute inset-0 z-0">
+          <img 
+            src={vitrionWallpaper} 
+            alt="Vitrion Smart Display" 
+            className="w-full h-full object-cover animate-fade-in"
+            referrerPolicy="no-referrer"
+          />
+        </div>
+
+        {/* Ambient top shadow */}
+        <div className="absolute inset-x-0 top-0 h-48 bg-gradient-to-b from-black/80 to-transparent z-10" />
+
+        {/* Content alignment spacers */}
+        <div className="h-10" />
         
-        {/* Floating Glowing Orbs */}
-        <div className="absolute top-1/4 left-1/4 w-72 h-72 bg-indigo-600/10 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-1/4 right-1/4 w-72 h-72 bg-blue-600/15 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '4s' }} />
+        {/* Immersive centered container */}
+        <div className="relative z-20 flex-1 flex flex-col items-center justify-center">
+          {/* Transparent spacer since brand information is already built into the wallpaper image */}
+        </div>
 
-        {/* Animated Brand Content */}
-        <div className="relative z-10 text-center flex flex-col items-center max-w-lg space-y-7 animate-fade-in">
-          
-          {/* High-fidelity Brand Logo and Wordmark */}
-          <VitrionLogo variant="full" size="xl" theme="dark" className="filter drop-shadow-[0_0_20px_rgba(56,189,248,0.25)]" />
-
-          {/* Separation Accent Line */}
-          <div className="w-24 h-0.5 bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent" />
-
-          {/* Bold, highlighted slogan sentence requested by the user */}
-          <div className="px-6 py-3.5 bg-white/5 border border-white/10 rounded-2xl shadow-xl backdrop-blur-md">
-            <p className="text-xs sm:text-xs font-bold tracking-widest uppercase text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-indigo-200 to-cyan-300 font-sans leading-relaxed">
-              "SUA VITRINE DIGITAL INTELIGENTE E CONECTADA EM TEMPO REAL"
-            </p>
-          </div>
-
-          {/* Gentle loading spinner */}
-          <div className="flex items-center gap-2 pt-3 justify-center">
-            <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono">Sincronizando Painel...</span>
-          </div>
-
+        {/* Bottom subtle synchronizing glass-card controller */}
+        <div className="relative z-20 w-full max-w-xs px-6 py-3.5 bg-slate-950/80 border border-white/10 rounded-2xl shadow-2xl backdrop-blur-md flex items-center justify-center gap-3 animate-pulse">
+          <Loader2 className="w-4 h-4 animate-spin text-cyan-400 shrink-0" />
+          <span className="text-[10px] sm:text-[10.5px] font-bold text-slate-300 uppercase tracking-widest font-mono">Sincronizando Sistema...</span>
         </div>
       </div>
     );

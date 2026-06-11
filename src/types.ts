@@ -43,6 +43,7 @@ export interface Playlist {
   items: PlaylistItem[];
   ownerId: string;
   clientId?: string; // Reference to the registered Client document ID
+  schedule?: Record<string, DaySchedule>; // Weekly schedule config
   createdAt: any; // Firestore Timestamp
   updatedAt: any; // Firestore Timestamp
 }

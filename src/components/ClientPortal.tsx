@@ -14,6 +14,8 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { VitrionLogo } from './VitrionLogo';
+// @ts-ignore
+import vitrionWallpaper from '../assets/images/vitrion_wallpaper_1781184254895.jpg';
 import { Client, Screen, Asset, Playlist, PlaylistItem } from '../types';
 import { 
   Tv, Layers, LogOut, CheckCircle2, AlertCircle, Plus, Trash2, 
@@ -1394,25 +1396,20 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
                           </div>
                           
                           {screen.contentType === 'standby' ? (
-                            <div className="w-full h-full bg-[#05060c] flex flex-col items-center justify-center text-center p-4">
-                              <Tv className="w-5 h-5 text-amber-500 animate-pulse mb-1 shrink-0" />
-                              <span className="text-[9px] uppercase font-bold text-amber-500 tracking-wider font-mono">Standby Ativado</span>
-                              <p className="text-[8px] text-slate-500 font-medium leading-tight">Smart TV em modo de espera / descanso.</p>
+                            <div className="w-full h-full relative">
+                              <img src={vitrionWallpaper} className="absolute inset-0 w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
+                              <div className="absolute inset-0 bg-[#05060c]/70 flex flex-col items-center justify-center text-center p-2">
+                                <Tv className="w-4 h-4 text-amber-500 animate-pulse mb-0.5 shrink-0" />
+                                <span className="text-[8px] uppercase font-bold text-amber-400 tracking-wider font-mono">Standby</span>
+                              </div>
                             </div>
                           ) : screen.contentType === 'stopped' ? (
-                            <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center text-center p-4">
-                              {/* Color bars preview */}
-                              <div className="flex w-24 h-6 border border-slate-900 rounded overflow-hidden opacity-40 mb-1 leading-none">
-                                <div className="flex-1 bg-white h-full" />
-                                <div className="flex-1 bg-yellow-400 h-full" />
-                                <div className="flex-1 bg-cyan-400 h-full" />
-                                <div className="flex-1 bg-green-400 h-full" />
-                                <div className="flex-1 bg-purple-500 h-full" />
-                                <div className="flex-1 bg-red-500 h-full" />
-                                <div className="flex-1 bg-blue-600 h-full" />
+                            <div className="w-full h-full relative">
+                              <img src={vitrionWallpaper} className="absolute inset-0 w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
+                              <div className="absolute inset-0 bg-red-950/70 flex flex-col items-center justify-center text-center p-2">
+                                <Tv className="w-4 h-4 text-rose-500 animate-pulse mb-0.5 shrink-0" />
+                                <span className="text-[8px] uppercase font-bold text-rose-400 tracking-wider font-mono">Parado (Stopped)</span>
                               </div>
-                              <span className="text-[9px] uppercase font-bold text-rose-500 tracking-wider font-mono leading-none font-semibold">Exibição Parada</span>
-                              <p className="text-[8px] text-slate-500">Transmissão interrompida pelo painel.</p>
                             </div>
                           ) : screen.contentType === 'playlist' && showingPlaylist ? (
                             <div className="w-full h-full bg-[#080710] flex flex-col items-center justify-center text-center p-3 relative">
@@ -1466,10 +1463,12 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
                             )
                           ) : (
                             // Idle state
-                            <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center text-center p-4 space-y-1">
-                              <Tv className="w-5 h-5 text-indigo-500/80 animate-pulse mb-0.5 shrink-0" />
-                              <span className="text-[9px] font-bold text-slate-400 leading-none uppercase">Monitor Ativo</span>
-                              <p className="text-[8.5px] text-slate-500 leading-snug">Menu Ocioso / Esperando transmissão</p>
+                            <div className="w-full h-full relative">
+                              <img src={vitrionWallpaper} className="absolute inset-0 w-full h-full object-cover" alt="" referrerPolicy="no-referrer" />
+                              <div className="absolute inset-0 bg-slate-950/70 flex flex-col items-center justify-center text-center p-2">
+                                <Tv className="w-4 h-4 text-indigo-400 animate-pulse mb-0.5 shrink-0" />
+                                <span className="text-[8px] uppercase font-bold text-indigo-300 tracking-wider font-mono">Monitor Ocioso</span>
+                              </div>
                             </div>
                           )}
                         </div>
