@@ -5,7 +5,7 @@ import { Asset, Playlist, PlaylistItem } from '../types';
 import { 
   Plus, Trash2, ArrowUp, ArrowDown, Play, ListPlus,
   Save, Trash, Sparkles, FolderHeart, Info, Film,
-  Building, HelpCircle
+  Building, HelpCircle, Clock, ChevronDown, ChevronUp
 } from 'lucide-react';
 
 export default function PlaylistManager() {
@@ -20,6 +20,8 @@ export default function PlaylistManager() {
   const [name, setName] = useState('');
   const [playlistClientId, setPlaylistClientId] = useState('');
   const [items, setItems] = useState<PlaylistItem[]>([]);
+  const [playlistSchedule, setPlaylistSchedule] = useState<Record<string, any>>({});
+  const [isScheduleOpen, setIsScheduleOpen] = useState(false);
 
   // List Search & Filter states
   const [playlistSearch, setPlaylistSearch] = useState('');
@@ -148,11 +150,25 @@ export default function PlaylistManager() {
     };
   }, [currentUserId]);
 
+  const createDefaultSchedule = () => {
+    const sched: any = {};
+    ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'].forEach((day) => {
+      sched[day] = {
+        enabled: false,
+        startTime: '08:00',
+        endTime: '18:00'
+      };
+    });
+    return sched;
+  };
+
   const resetForm = () => {
     setName('');
     setPlaylistClientId('');
     setItems([]);
     setEditingPlaylist(null);
+    setPlaylistSchedule(createDefaultSchedule());
+    setIsScheduleOpen(false);
     setIsFormOpen(false);
   };
 
@@ -161,6 +177,19 @@ export default function PlaylistManager() {
     setName(playlist.name);
     setPlaylistClientId(playlist.clientId || '');
     setItems([...playlist.items]);
+    
+    const existing = playlist.schedule || {};
+    const defaultSched = createDefaultSchedule();
+    const merged = { ...defaultSched };
+    Object.keys(existing).forEach((day) => {
+      merged[day] = {
+        enabled: existing[day]?.enabled ?? false,
+        startTime: existing[day]?.startTime || '08:00',
+        endTime: existing[day]?.endTime || '18:00'
+      };
+    });
+    setPlaylistSchedule(merged);
+    setIsScheduleOpen(false);
     setIsFormOpen(true);
   };
 
@@ -241,6 +270,7 @@ export default function PlaylistManager() {
       })),
       ownerId: currentUserId,
       clientId: playlistClientId || '',
+      schedule: playlistSchedule,
       updatedAt: serverTimestamp(),
     };
 
@@ -327,6 +357,98 @@ export default function PlaylistManager() {
                     ))}
                   </select>
                 </div>
+              </div>
+
+              {/* Collapsible Playlist Weekly Schedule */}
+              <div className="border border-slate-200 rounded-lg p-3 space-y-2 bg-slate-50/50">
+                <button
+                  type="button"
+                  onClick={() => setIsScheduleOpen(!isScheduleOpen)}
+                  className="text-xs text-indigo-600 hover:text-indigo-500 font-bold uppercase tracking-wider flex items-center justify-between w-full transition cursor-pointer"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="w-4 h-4" />
+                    Programador Semanal de Exibição (Playlist Timer)
+                  </span>
+                  {isScheduleOpen ? <ChevronUp className="w-4 h-4 text-indigo-505" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                </button>
+
+                {isScheduleOpen && (
+                  <div className="pt-2 border-t border-slate-200 space-y-2 text-xs text-slate-600 animate-fade-in">
+                    <p className="text-[10px] text-slate-500 leading-normal">
+                      Configure em quais horários esta playlist poderá ser exibida automaticamente. Fora deste intervalo, a tela exibirá uma <strong>tela preta</strong> se esta playlist estiver sintonizada na Smart TV.
+                    </p>
+                    
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      {[
+                        { key: 'monday', label: 'Segunda-feira' },
+                        { key: 'tuesday', label: 'Terça-feira' },
+                        { key: 'wednesday', label: 'Quarta-feira' },
+                        { key: 'thursday', label: 'Quinta-feira' },
+                        { key: 'friday', label: 'Sexta-feira' },
+                        { key: 'saturday', label: 'Sábado' },
+                        { key: 'sunday', label: 'Domingo' }
+                      ].map(({ key, label }) => {
+                        const dayConfig = playlistSchedule[key] || { enabled: false, startTime: '08:00', endTime: '18:00' };
+                        return (
+                          <div key={key} className="flex items-center justify-between gap-2 p-1.5 bg-white border border-slate-150 rounded text-slate-750">
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="checkbox"
+                                id={`playlist-sched-${key}`}
+                                checked={dayConfig.enabled}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setPlaylistSchedule((prev) => ({
+                                    ...prev,
+                                    [key]: { ...dayConfig, enabled: checked }
+                                  }));
+                                }}
+                                className="rounded border-slate-200 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
+                              />
+                              <label htmlFor={`playlist-sched-${key}`} className="font-semibold text-[10.5px] select-none cursor-pointer">
+                                {label}
+                              </label>
+                            </div>
+                            
+                            {dayConfig.enabled ? (
+                              <div className="flex items-center gap-1 text-[10px]">
+                                <span className="text-slate-400 text-[9px]">Das:</span>
+                                <input
+                                  type="time"
+                                  value={dayConfig.startTime}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setPlaylistSchedule((prev) => ({
+                                      ...prev,
+                                      [key]: { ...dayConfig, startTime: val }
+                                    }));
+                                  }}
+                                  className="bg-white border border-slate-200 rounded px-1.5 py-0.5 text-slate-800 outline-none focus:border-indigo-500 text-[10px] font-bold"
+                                />
+                                <span className="text-slate-400 text-[9px]">Até:</span>
+                                <input
+                                  type="time"
+                                  value={dayConfig.endTime}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setPlaylistSchedule((prev) => ({
+                                      ...prev,
+                                      [key]: { ...dayConfig, endTime: val }
+                                    }));
+                                  }}
+                                  className="bg-white border border-slate-200 rounded px-1.5 py-0.5 text-slate-800 outline-none focus:border-indigo-500 text-[10px] font-bold"
+                                />
+                              </div>
+                            ) : (
+                              <span className="text-[9.5px] italic text-slate-400">Ativo o dia todo</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>

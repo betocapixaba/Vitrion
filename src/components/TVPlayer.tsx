@@ -168,22 +168,22 @@ function isScheduledOff(screenDoc: any): boolean {
 export default function TVPlayer() {
   const [screenId, setScreenId] = useState<string | null>(null);
   const [screenDoc, setScreenDoc] = useState<Screen | null>(null);
+  const [activePlaylistDoc, setActivePlaylistDoc] = useState<any>(null);
   const [isOffBySchedule, setIsOffBySchedule] = useState(false);
 
   useEffect(() => {
-    if (!screenDoc || !screenDoc.schedule) {
-      setIsOffBySchedule(false);
-      return;
-    }
-
     const checkSchedule = () => {
-      setIsOffBySchedule(isScheduledOff(screenDoc));
+      const screenOff = isScheduledOff(screenDoc);
+      const playlistOff = (screenDoc?.contentType === 'playlist' && activePlaylistDoc)
+        ? isScheduledOff(activePlaylistDoc)
+        : false;
+      setIsOffBySchedule(screenOff || playlistOff);
     };
 
     checkSchedule();
     const interval = setInterval(checkSchedule, 5000); // Check every 5 seconds
     return () => clearInterval(interval);
-  }, [screenDoc]);
+  }, [screenDoc, activePlaylistDoc]);
   const [activeAsset, setActiveAsset] = useState<any>(null);
   const [playlistIndex, setPlaylistIndex] = useState(0);
   const [playlistItems, setPlaylistItems] = useState<PlaylistItem[]>([]);
@@ -480,6 +480,7 @@ export default function TVPlayer() {
     if (!screenDoc || screenDoc.ownerId === '') {
       setActiveAsset(null);
       setPlaylistItems([]);
+      setActivePlaylistDoc(null);
       return;
     }
 
@@ -488,10 +489,12 @@ export default function TVPlayer() {
     if (contentType === 'idle' || contentType === 'standby' || contentType === 'stopped') {
       setActiveAsset(null);
       setPlaylistItems([]);
+      setActivePlaylistDoc(null);
       return;
     }
 
     if (contentType === 'asset') {
+      setActivePlaylistDoc(null);
       // Pull single asset document real-time
       const assetRef = doc(db, 'assets', contentId);
       const unsubAsset = onSnapshot(assetRef, (snap) => {
@@ -512,6 +515,10 @@ export default function TVPlayer() {
       const unsubPlaylist = onSnapshot(playlistRef, (snap) => {
         if (snap.exists()) {
           const d = snap.data();
+          setActivePlaylistDoc({
+            id: snap.id,
+            ...d
+          });
           const newItems = d.items || [];
           setPlaylistItems((prev) => {
             const isSame = prev.length === newItems.length &&
