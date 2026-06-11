@@ -19,7 +19,7 @@ import {
   Tv, Layers, LogOut, CheckCircle2, AlertCircle, Plus, Trash2, 
   RefreshCw, Copy, ExternalLink, Image as ImageIcon, MapPin, 
   Check, Play, X, Sliders, Info, ShoppingBag, ListPlus, ArrowUp, ArrowDown, FolderHeart, Save, Sparkles, Film,
-  Monitor, Loader2, Power
+  Monitor, Loader2, Power, ChevronDown, ChevronUp, Clock
 } from 'lucide-react';
 
 // Error monitoring based on firebase-integration skill
@@ -114,6 +114,69 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
   // Smart TV Simulator Modal State
   const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
   const [simulatorScreenId, setSimulatorScreenId] = useState<string>('');
+
+  // Weekly Timing Schedule state variables
+  const [expandedSchedules, setExpandedSchedules] = useState<Record<string, boolean>>({});
+  const [localSchedules, setLocalSchedules] = useState<Record<string, any>>({});
+  const [savingSchedule, setSavingSchedule] = useState<string | null>(null);
+
+  const DAYS_OF_WEEK = [
+    { key: 'monday', label: 'Segunda-feira' },
+    { key: 'tuesday', label: 'Terça-feira' },
+    { key: 'wednesday', label: 'Quarta-feira' },
+    { key: 'thursday', label: 'Quinta-feira' },
+    { key: 'friday', label: 'Sexta-feira' },
+    { key: 'saturday', label: 'Sábado' },
+    { key: 'sunday', label: 'Domingo' }
+  ];
+
+  const createDefaultSchedule = () => {
+    const sched: any = {};
+    ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'].forEach((day) => {
+      sched[day] = {
+        enabled: false,
+        startTime: '08:00',
+        endTime: '18:00'
+      };
+    });
+    return sched;
+  };
+
+  const toggleScheduleSection = (screen: Screen) => {
+    const current = !!expandedSchedules[screen.id];
+    setExpandedSchedules(prev => ({ ...prev, [screen.id]: !current }));
+    
+    if (!current && !localSchedules[screen.id]) {
+      const existing = screen.schedule || {};
+      const defaultSched = createDefaultSchedule();
+      const merged = { ...defaultSched };
+      Object.keys(existing).forEach((day) => {
+        merged[day] = {
+          enabled: existing[day].enabled ?? false,
+          startTime: existing[day].startTime || '08:00',
+          endTime: existing[day].endTime || '18:00'
+        };
+      });
+      setLocalSchedules(prev => ({ ...prev, [screen.id]: merged }));
+    }
+  };
+
+  const handleSaveScreenSchedule = async (screenId: string, schedule: any) => {
+    setSavingSchedule(screenId);
+    try {
+      const docRef = doc(db, 'screens', screenId);
+      await updateDoc(docRef, {
+        schedule: schedule,
+        updatedAt: serverTimestamp()
+      });
+      setSuccessMsg('Programação de horários atualizada com sucesso!');
+    } catch (err) {
+      console.error('Error saving screen schedule:', err);
+      handleLocalFirestoreError(err, OperationType.UPDATE, `screens/${screenId}`);
+    } finally {
+      setSavingSchedule(null);
+    }
+  };
 
   // Live client and plan subscription states
   const [currentClient, setCurrentClient] = useState<Client>(client);
@@ -1514,6 +1577,119 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
                           </div>
                         </div>
                       )}
+
+                      {/* Weekly Timer Schedule configuration section */}
+                      <div className="border-t border-slate-900 pt-3 flex flex-col gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleScheduleSection(screen)}
+                          className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold uppercase tracking-wider flex items-center justify-between w-full transition cursor-pointer"
+                        >
+                          <span className="flex items-center gap-1.5 font-bold">
+                            <Clock className="w-3.5 h-3.5" />
+                            Programador Semanal (Timer Horário)
+                          </span>
+                          {expandedSchedules[screen.id] ? <ChevronUp className="w-3.5 h-3.5 text-indigo-500" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-500" />}
+                        </button>
+
+                        {expandedSchedules[screen.id] && localSchedules[screen.id] && (
+                          <div className="mt-2 space-y-3 bg-slate-950/50 rounded-lg p-3 border border-slate-900 text-xs text-slate-350 animate-fade-in">
+                            <p className="text-[10px] text-slate-400 leading-normal">
+                              Configure em quais horários este monitor poderá sintonizar e exibir conteúdos automaticamente. Nos horários desativados, a tela exibirá uma <strong>tela preta</strong> para economizar energia.
+                            </p>
+                            
+                            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                              {DAYS_OF_WEEK.map(({ key, label }) => {
+                                const dayConfig = localSchedules[screen.id][key] || { enabled: false, startTime: '08:00', endTime: '18:00' };
+                                return (
+                                  <div key={key} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 bg-slate-900/40 rounded border border-slate-850/65">
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="checkbox"
+                                        id={`schedule-${screen.id}-${key}`}
+                                        checked={dayConfig.enabled}
+                                        onChange={(e) => {
+                                          const checked = e.target.checked;
+                                          setLocalSchedules((prev) => ({
+                                            ...prev,
+                                            [screen.id]: {
+                                              ...prev[screen.id],
+                                              [key]: { ...dayConfig, enabled: checked }
+                                            }
+                                          }));
+                                        }}
+                                        className="rounded border-slate-705 bg-slate-800 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
+                                      />
+                                      <label htmlFor={`schedule-${screen.id}-${key}`} className="font-bold text-[11px] text-slate-300 select-none cursor-pointer">
+                                        {label}
+                                      </label>
+                                    </div>
+                                    
+                                    {dayConfig.enabled && (
+                                      <div className="flex items-center gap-1.5 text-[10px]">
+                                        <span className="text-slate-500">Início:</span>
+                                        <input
+                                          type="time"
+                                          value={dayConfig.startTime}
+                                          onChange={(e) => {
+                                            const val = e.target.value;
+                                            setLocalSchedules((prev) => ({
+                                              ...prev,
+                                              [screen.id]: {
+                                                ...prev[screen.id],
+                                                [key]: { ...dayConfig, startTime: val }
+                                              }
+                                            }));
+                                          }}
+                                          className="bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-white outline-hidden focus:border-indigo-500 text-xxs font-bold"
+                                        />
+                                        <span className="text-slate-500">Fim:</span>
+                                        <input
+                                          type="time"
+                                          value={dayConfig.endTime}
+                                          onChange={(e) => {
+                                            const val = e.target.value;
+                                            setLocalSchedules((prev) => ({
+                                              ...prev,
+                                              [screen.id]: {
+                                                ...prev[screen.id],
+                                                [key]: { ...dayConfig, endTime: val }
+                                              }
+                                            }));
+                                          }}
+                                          className="bg-slate-950 border border-slate-800 rounded px-1.5 py-0.5 text-white outline-hidden focus:border-indigo-500 text-xxs font-bold"
+                                        />
+                                      </div>
+                                    )}
+                                    {!dayConfig.enabled && (
+                                      <span className="text-[10px] italic text-slate-500">Ativo o dia todo (Sem restrição)</span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            <button
+                              type="button"
+                              disabled={savingSchedule === screen.id}
+                              onClick={() => handleSaveScreenSchedule(screen.id, localSchedules[screen.id])}
+                              className="w-full flex items-center justify-center gap-1.5 py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded font-bold text-xs transition duration-200 cursor-pointer disabled:opacity-60 shadow-sm"
+                            >
+                              {savingSchedule === screen.id ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  <span>Atualizando Horários...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Salvar Programação Semanal</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })}

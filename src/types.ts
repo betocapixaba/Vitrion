@@ -47,6 +47,14 @@ export interface Playlist {
   updatedAt: any; // Firestore Timestamp
 }
 
+export interface DaySchedule {
+  enabled: boolean;
+  startTime: string; // Hour in 'HH:MM' format
+  endTime: string;   // Hour in 'HH:MM' format
+}
+
+export type WeeklySchedule = Record<string, DaySchedule>;
+
 export interface Screen {
   id: string; // Unique pairing code (e.g., 'BG4D')
   name: string; // Name assigned by user, e.g. "Painel Loja"
@@ -60,6 +68,7 @@ export interface Screen {
   clientId?: string; // Reference to the registered Client document ID
   createdAt: any; // Firestore Timestamp
   updatedAt: any; // Firestore Timestamp
+  schedule?: WeeklySchedule;
 }
 
 export interface Client {

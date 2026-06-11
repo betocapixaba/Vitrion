@@ -136,9 +136,54 @@ function removeStoredScreenId() {
   deleteIndexedDBValue('op_player_screen_id');
 }
 
+function isScheduledOff(screenDoc: any): boolean {
+  if (!screenDoc || !screenDoc.schedule) return false;
+  
+  const now = new Date();
+  const dayIndex = now.getDay(); // 0 is Sunday, 1 is Monday, etc.
+  const daysKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const dayKey = daysKeys[dayIndex];
+  
+  const dayConfig = screenDoc.schedule[dayKey];
+  if (!dayConfig || !dayConfig.enabled) {
+    return false; // If disabled or not set for this day, don't show black screen
+  }
+  
+  const { startTime, endTime } = dayConfig;
+  if (!startTime || !endTime) return false;
+  
+  // Convert current time to a comparable minutes format (HH:MM)
+  const currentHours = now.getHours().toString().padStart(2, '0');
+  const currentMinutes = now.getMinutes().toString().padStart(2, '0');
+  const currentTimeStr = `${currentHours}:${currentMinutes}`;
+  
+  if (startTime <= endTime) {
+    return currentTimeStr < startTime || currentTimeStr >= endTime;
+  } else {
+    // Overnight schedule
+    return currentTimeStr >= endTime && currentTimeStr < startTime;
+  }
+}
+
 export default function TVPlayer() {
   const [screenId, setScreenId] = useState<string | null>(null);
   const [screenDoc, setScreenDoc] = useState<Screen | null>(null);
+  const [isOffBySchedule, setIsOffBySchedule] = useState(false);
+
+  useEffect(() => {
+    if (!screenDoc || !screenDoc.schedule) {
+      setIsOffBySchedule(false);
+      return;
+    }
+
+    const checkSchedule = () => {
+      setIsOffBySchedule(isScheduledOff(screenDoc));
+    };
+
+    checkSchedule();
+    const interval = setInterval(checkSchedule, 5000); // Check every 5 seconds
+    return () => clearInterval(interval);
+  }, [screenDoc]);
   const [activeAsset, setActiveAsset] = useState<any>(null);
   const [playlistIndex, setPlaylistIndex] = useState(0);
   const [playlistItems, setPlaylistItems] = useState<PlaylistItem[]>([]);
@@ -824,6 +869,12 @@ export default function TVPlayer() {
       ref={containerRef} 
       className="min-h-screen w-full bg-black flex flex-col justify-between text-white relative overflow-hidden font-sans select-none"
     >
+      {isOffBySchedule && (
+        <div 
+          className="absolute inset-0 bg-black z-50 flex items-center justify-center animate-fade-in" 
+          id="tv-player-schedule-black-screen"
+        />
+      )}
       {/* Absolute fullscreen media host */}
       <AnimatePresence mode="wait">
         {screenDoc.contentType === 'standby' ? (

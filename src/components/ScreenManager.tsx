@@ -23,6 +23,7 @@ export default function ScreenManager() {
   const [editingScreen, setEditingScreen] = useState<Screen | null>(null);
   const [editScreenName, setEditScreenName] = useState('');
   const [editScreenClientId, setEditScreenClientId] = useState('');
+  const [editScreenSchedule, setEditScreenSchedule] = useState<Record<string, any>>({});
 
   // Edit Client states
   const [isEditClientModalOpen, setIsEditClientModalOpen] = useState(false);
@@ -637,6 +638,25 @@ export default function ScreenManager() {
     return `${dayName}, ${formattedDate} às ${formattedTime}`;
   };
 
+  const openEditScreenModal = (screen: Screen) => {
+    setEditingScreen(screen);
+    setEditScreenName(screen.name);
+    setEditScreenClientId(screen.clientId || '');
+    
+    // Initialize schedule
+    const existing = screen.schedule || {};
+    const defaultSched: any = {};
+    ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'].forEach((day) => {
+      defaultSched[day] = {
+        enabled: existing[day]?.enabled ?? false,
+        startTime: existing[day]?.startTime || '08:00',
+        endTime: existing[day]?.endTime || '18:00'
+      };
+    });
+    setEditScreenSchedule(defaultSched);
+    setIsEditModalOpen(true);
+  };
+
   const handleSaveScreenDetails = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingScreen) return;
@@ -645,6 +665,7 @@ export default function ScreenManager() {
       await updateDoc(ref, {
         name: editScreenName.trim(),
         clientId: editScreenClientId || '',
+        schedule: editScreenSchedule,
         updatedAt: serverTimestamp(),
       });
       setSuccessMsg(`Configurações de "${editScreenName.trim()}" atualizadas!`);
@@ -1159,10 +1180,7 @@ export default function ScreenManager() {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setEditingScreen(screen);
-                                setEditScreenName(screen.name);
-                                setEditScreenClientId(screen.clientId || '');
-                                setIsEditModalOpen(true);
+                                openEditScreenModal(screen);
                               }}
                               className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded transition shrink-0"
                               title="Editar Monitor e Cliente Associado"
@@ -1627,10 +1645,7 @@ export default function ScreenManager() {
                                             type="button"
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              setEditingScreen(scr);
-                                              setEditScreenName(scr.name);
-                                              setEditScreenClientId(scr.clientId || '');
-                                              setIsEditModalOpen(true);
+                                              openEditScreenModal(scr);
                                             }}
                                             className="p-0.5 text-slate-400 hover:text-indigo-650 hover:bg-slate-50 rounded transition"
                                             title="Editar TV e Proprietário"
@@ -1954,6 +1969,86 @@ export default function ScreenManager() {
                 <p className="text-[9px] text-slate-400 leading-normal pt-1">
                   Vincular o monitor a um cliente permite que você rastreie e localize este display facilmente no projeto.
                 </p>
+              </div>
+
+              {/* Weekly Schedule configuration in Admin Modal */}
+              <div className="space-y-2 border-t border-slate-100 pt-3">
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-indigo-500" />
+                  Programador de Horários (Timer Semanal)
+                </label>
+                <p className="text-[9px] text-slate-400 leading-normal">
+                  Configure os horários de início e término de exibição para cada dia da semana. Fora deste intervalo, o visor exibirá tela preta.
+                </p>
+                
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  {[
+                    { key: 'monday', label: 'Segunda-feira' },
+                    { key: 'tuesday', label: 'Terça-feira' },
+                    { key: 'wednesday', label: 'Quarta-feira' },
+                    { key: 'thursday', label: 'Quinta-feira' },
+                    { key: 'friday', label: 'Sexta-feira' },
+                    { key: 'saturday', label: 'Sábado' },
+                    { key: 'sunday', label: 'Domingo' }
+                  ].map(({ key, label }) => {
+                    const dayConfig = editScreenSchedule[key] || { enabled: false, startTime: '08:00', endTime: '18:00' };
+                    return (
+                      <div key={key} className="flex items-center justify-between gap-2 p-1.5 bg-slate-50 border border-slate-100 rounded text-slate-700">
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="checkbox"
+                            id={`admin-sched-${key}`}
+                            checked={dayConfig.enabled}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setEditScreenSchedule((prev) => ({
+                                ...prev,
+                                [key]: { ...dayConfig, enabled: checked }
+                              }));
+                            }}
+                            className="rounded border-slate-200 text-indigo-650 focus:ring-indigo-500 h-3.5 w-3.5 cursor-pointer"
+                          />
+                          <label htmlFor={`admin-sched-${key}`} className="font-semibold text-[10.5px] select-none cursor-pointer">
+                            {label}
+                          </label>
+                        </div>
+                        
+                        {dayConfig.enabled ? (
+                          <div className="flex items-center gap-1 text-[10px]">
+                            <span className="text-slate-450 text-[9px]">Das:</span>
+                            <input
+                              type="time"
+                              value={dayConfig.startTime}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setEditScreenSchedule((prev) => ({
+                                  ...prev,
+                                  [key]: { ...dayConfig, startTime: val }
+                                }));
+                              }}
+                              className="bg-white border border-slate-200 rounded px-1 py-0.5 text-slate-800 outline-none focus:border-indigo-500 text-[10px] font-bold"
+                            />
+                            <span className="text-slate-450 text-[9px]">Até:</span>
+                            <input
+                              type="time"
+                              value={dayConfig.endTime}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setEditScreenSchedule((prev) => ({
+                                  ...prev,
+                                  [key]: { ...dayConfig, endTime: val }
+                                }));
+                              }}
+                              className="bg-white border border-slate-200 rounded px-1 py-0.5 text-slate-800 outline-none focus:border-indigo-500 text-[10px] font-bold"
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-[9.5px] italic text-slate-400">Ativo o dia todo</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Unique stats and timeline details */}
