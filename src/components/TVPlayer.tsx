@@ -462,6 +462,7 @@ export default function TVPlayer() {
           ownerId: data.ownerId || '',
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
+          schedule: data.schedule,
         };
         setScreenDoc(sc);
       },

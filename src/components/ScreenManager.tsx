@@ -8,6 +8,35 @@ import {
   Search, Calendar, Pencil, X, Building, Clock, Power, ChevronDown, ChevronUp
 } from 'lucide-react';
 
+function isScheduledOff(screenDoc: any): boolean {
+  if (!screenDoc || !screenDoc.schedule) return false;
+  
+  const now = new Date();
+  const dayIndex = now.getDay(); // 0 is Sunday, 1 is Monday, etc.
+  const daysKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const dayKey = daysKeys[dayIndex];
+  
+  const dayConfig = screenDoc.schedule[dayKey];
+  if (!dayConfig || !dayConfig.enabled) {
+    return false; // If disabled or not set for this day, don't show black screen
+  }
+  
+  const { startTime, endTime } = dayConfig;
+  if (!startTime || !endTime) return false;
+  
+  // Convert current time to a comparable minutes format (HH:MM)
+  const currentHours = now.getHours().toString().padStart(2, '0');
+  const currentMinutes = now.getMinutes().toString().padStart(2, '0');
+  const currentTimeStr = `${currentHours}:${currentMinutes}`;
+  
+  if (startTime <= endTime) {
+    return currentTimeStr < startTime || currentTimeStr >= endTime;
+  } else {
+    // Overnight schedule
+    return currentTimeStr >= endTime && currentTimeStr < startTime;
+  }
+}
+
 export default function ScreenManager() {
   const [screens, setScreens] = useState<Screen[]>([]);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
@@ -1132,6 +1161,13 @@ export default function ScreenManager() {
                                   <span className={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-350'}`} />
                                   {isOnline ? 'ONLINE • RECEBENDO TRANSMISSÃO' : 'SEM SINAL (OFFLINE)'}
                                 </span>
+
+                                {isScheduledOff(screen) && (
+                                  <span className="inline-flex items-center gap-1 text-[9px] font-bold bg-amber-55 border border-amber-200 text-amber-800 px-1.5 py-0.2 rounded-md">
+                                    <Clock className="w-2.5 h-2.5 shrink-0 text-amber-600 animate-pulse" />
+                                    EXPEDIENTE TIMER FECHADO (TELA PRETA)
+                                  </span>
+                                )}
                               </div>
 
                               {/* Complete Timestamp activity and pairing logger */}
@@ -1704,6 +1740,14 @@ export default function ScreenManager() {
                   {/* Outer Frame styled like a thin bezel premium TV display */}
                   <div className="w-full relative bg-slate-950 rounded-lg p-2 border border-slate-800 shadow-lg flex flex-col justify-between">
                     <div className="w-full aspect-video rounded bg-black overflow-hidden relative flex flex-col items-center justify-center border border-slate-900 shadow-inner">
+                      {/* Active Scheduled Timer Overrides with Black Screen */}
+                      {isScheduledOff(pairedScreen) && (
+                        <div className="absolute inset-0 bg-slate-950 z-50 flex flex-col items-center justify-center text-center p-4 select-none animate-fade-in">
+                          <Clock className="w-5 h-5 text-indigo-400 animate-pulse mb-1 shrink-0" />
+                          <span className="text-[9px] uppercase font-extrabold text-indigo-400 tracking-wider font-mono">Fora de Horário (Timer)</span>
+                          <span className="text-[8px] text-slate-500 font-medium max-w-[180px] leading-tight mt-0.5">Visor exibe tela preta fora do expediente pré-ajustado.</span>
+                        </div>
+                      )}
                       
                       {/* Interactive Player Renderer depending on active states */}
                       {pairedScreen.contentType === 'standby' ? (

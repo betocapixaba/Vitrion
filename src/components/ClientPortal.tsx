@@ -68,6 +68,35 @@ function generateDisplayCode(): string {
   return result;
 }
 
+function isScheduledOff(screenDoc: any): boolean {
+  if (!screenDoc || !screenDoc.schedule) return false;
+  
+  const now = new Date();
+  const dayIndex = now.getDay(); // 0 is Sunday, 1 is Monday, etc.
+  const daysKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const dayKey = daysKeys[dayIndex];
+  
+  const dayConfig = screenDoc.schedule[dayKey];
+  if (!dayConfig || !dayConfig.enabled) {
+    return false; // If disabled or not set for this day, don't show black screen
+  }
+  
+  const { startTime, endTime } = dayConfig;
+  if (!startTime || !endTime) return false;
+  
+  // Convert current time to a comparable minutes format (HH:MM)
+  const currentHours = now.getHours().toString().padStart(2, '0');
+  const currentMinutes = now.getMinutes().toString().padStart(2, '0');
+  const currentTimeStr = `${currentHours}:${currentMinutes}`;
+  
+  if (startTime <= endTime) {
+    return currentTimeStr < startTime || currentTimeStr >= endTime;
+  } else {
+    // Overnight schedule
+    return currentTimeStr >= endTime && currentTimeStr < startTime;
+  }
+}
+
 interface ClientPortalProps {
   client: Client;
   onLogout: () => void;
@@ -1256,6 +1285,12 @@ export default function ClientPortal({ client, onLogout }: ClientPortalProps) {
                               <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${screen.status === 'online' ? 'bg-emerald-400' : 'bg-slate-500'}`}></span>
                               <span className={`relative inline-flex rounded-full h-2 w-2 ${screen.status === 'online' ? 'bg-emerald-500' : 'bg-slate-500'}`}></span>
                             </span>
+                            {isScheduledOff(screen) && (
+                              <span className="inline-flex items-center gap-1.5 text-[9px] font-extrabold bg-amber-500/10 border border-amber-500/25 text-amber-400 px-2 py-0.5 rounded-full select-none ml-1 animate-pulse">
+                                <Clock className="w-2.5 h-2.5 text-amber-500" />
+                                TIMER ATIVO (TELA PRETA)
+                              </span>
+                            )}
                           </h3>
                           
                           <div className="flex items-center gap-1 text-[11px] text-slate-400">
