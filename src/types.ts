@@ -87,6 +87,7 @@ export interface Client {
   planId?: string; // Reference to the active Pricing Plan ID
   vencimento?: string; // Expiration Date (e.g., DD/MM/AAAA)
   ownerId: string; // Which admin created this client
+  orderIndex?: number; // Sorting sort sequence order for rows
   createdAt: any; // Firestore Timestamp
   updatedAt: any; // Firestore Timestamp
 }

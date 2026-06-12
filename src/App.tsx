@@ -17,7 +17,7 @@ import ClientSelfRegistration from './components/ClientSelfRegistration';
 import AdminHistoryManager from './components/AdminHistoryManager';
 import { VitrionLogo } from './components/VitrionLogo';
 // @ts-ignore
-import vitrionWallpaper from './assets/images/vitrion_wallpaper_1781184254895.jpg';
+import vitrionLogoOficial from './assets/images/vitrion_logo_oficial.png';
 import { Client } from './types';
 import { 
   Tv, Layers, LogOut, ShieldCheck, HelpCircle, Eye,
@@ -127,8 +127,13 @@ export default function App() {
   // Client and Unified authentication states
   const [loggedClient, setLoggedClient] = useState<Client | null>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('vitrion_logged_client');
-      return saved ? JSON.parse(saved) : null;
+      try {
+        const saved = localStorage.getItem('vitrion_logged_client');
+        return saved ? JSON.parse(saved) : null;
+      } catch (e) {
+        console.warn('Could not read vitrion_logged_client from localStorage:', e);
+        return null;
+      }
     }
     return null;
   });
@@ -581,33 +586,36 @@ export default function App() {
   // 3-second immersive startup screen with high-fidelity brand logomark and tagline as requested
   if (showSplash) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-between p-8 relative overflow-hidden select-none font-sans">
-        {/* Full-screen brand wallpaper */}
-        <div className="absolute inset-0 z-0">
+      <div className="min-h-screen bg-[#020B18] flex flex-col items-center justify-between p-8 relative overflow-hidden select-none font-sans">
+        {/* Subtle radial ambient glow in the center */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(56,189,248,0.06)_0%,transparent_70%)] pointer-events-none" />
+
+        <div className="h-10" />
+        
+        {/* Immersive centered container with official logo */}
+        <div className="relative z-20 flex-1 flex flex-col items-center justify-center max-w-2xl w-full p-4 animate-fade-in">
           <img 
-            src={vitrionWallpaper} 
+            src={vitrionLogoOficial} 
             alt="Vitrion Smart Display" 
-            className="w-full h-full object-cover animate-fade-in"
+            className="max-h-[60vh] max-w-full object-contain"
             referrerPolicy="no-referrer"
           />
         </div>
 
-        {/* Ambient top shadow */}
-        <div className="absolute inset-x-0 top-0 h-48 bg-gradient-to-b from-black/80 to-transparent z-10" />
-
-        {/* Content alignment spacers */}
-        <div className="h-10" />
-        
-        {/* Immersive centered container */}
-        <div className="relative z-20 flex-1 flex flex-col items-center justify-center">
-          {/* Transparent spacer since brand information is already built into the wallpaper image */}
-        </div>
-
         {/* Bottom subtle synchronizing glass-card controller */}
-        <div className="relative z-20 w-full max-w-xs px-6 py-3.5 bg-slate-950/80 border border-white/10 rounded-2xl shadow-2xl backdrop-blur-md flex items-center justify-center gap-3 animate-pulse">
+        <div className="relative z-20 w-full max-w-xs px-6 py-3.5 bg-slate-900/60 border border-white/5 rounded-2xl shadow-2xl backdrop-blur-md flex items-center justify-center gap-3 animate-pulse">
           <Loader2 className="w-4 h-4 animate-spin text-cyan-400 shrink-0" />
           <span className="text-[10px] sm:text-[10.5px] font-bold text-slate-300 uppercase tracking-widest font-mono">Sincronizando Sistema...</span>
         </div>
+      </div>
+    );
+  }
+
+  // 1. RENDER TV PLAYER MODE DIRECTLY (No Auth Needed)
+  if (appMode === 'player') {
+    return (
+      <div className="relative">
+        <TVPlayer />
       </div>
     );
   }
@@ -625,16 +633,11 @@ export default function App() {
   // Render Client Portal if a client establishment is logged in
   if (loggedClient) {
     return (
-      <ClientPortal client={loggedClient} onLogout={handleClientLogout} />
-    );
-  }
-
-  // 1. RENDER TV PLAYER MODE DIRECTLY (No Auth Needed)
-  if (appMode === 'player') {
-    return (
-      <div className="relative">
-        <TVPlayer />
-      </div>
+      <ClientPortal 
+        client={loggedClient} 
+        onLogout={handleClientLogout} 
+        onClientUpdate={(updatedClient) => setLoggedClient(updatedClient)} 
+      />
     );
   }
 

@@ -16,7 +16,7 @@ import {
   Search, Plus, Pencil, Trash2, Phone, MessageSquare, 
   MapPin, ShieldAlert, User, Mail, Eye, EyeOff, 
   Building, CheckCircle, X, RefreshCw, AlertTriangle,
-  Play, VideoOff, Tv
+  Play, VideoOff, Tv, ArrowUp, ArrowDown, List, Grid
 } from 'lucide-react';
 
 // Error monitoring based on firebase-integration skill
@@ -93,6 +93,7 @@ export default function ClientRegistry({ onImpersonate }: ClientRegistryProps) {
     return () => unsubscribe();
   }, []);
   const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
   const [isLoading, setIsLoading] = useState(true);
   const [errorText, setErrorText] = useState('');
   const [successText, setSuccessText] = useState('');
@@ -292,8 +293,15 @@ export default function ClientRegistry({ onImpersonate }: ClientRegistryProps) {
           cls.push({ id: docSnap.id, ...docSnap.data() } as Client);
         });
         
-        // Sort alphabetically by establishmentName
-        cls.sort((a, b) => a.establishmentName.localeCompare(b.establishmentName));
+        // Sort by orderIndex first, fallback to alphabetically by establishmentName
+        cls.sort((a, b) => {
+          const orderA = a.orderIndex !== undefined ? a.orderIndex : 0;
+          const orderB = b.orderIndex !== undefined ? b.orderIndex : 0;
+          if (orderA !== orderB) {
+            return orderA - orderB;
+          }
+          return a.establishmentName.localeCompare(b.establishmentName);
+        });
         
         setClients(cls);
         setIsLoading(false);
@@ -311,6 +319,62 @@ export default function ClientRegistry({ onImpersonate }: ClientRegistryProps) {
 
     return () => unsubscribe();
   }, [currentUserId]);
+
+  // Handle customer row dynamic persistent reordering
+  const handleReorder = async (currentIndex: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= filteredClients.length) return;
+
+    setErrorText('');
+    setSuccessText('');
+    try {
+      const clientA = filteredClients[currentIndex];
+      const clientB = filteredClients[targetIndex];
+
+      // To make reordering completely persistent and simple, find both elements in our full 'clients' array
+      // and set explicit sequence indices if any is undefined
+      const updatedList = [...clients];
+      
+      // Initialize indices sequentially for any that is missing
+      updatedList.forEach((c, idx) => {
+        if (c.orderIndex === undefined) {
+          c.orderIndex = idx * 10;
+        }
+      });
+
+      const idxA = updatedList.findIndex(c => c.id === clientA.id);
+      const idxB = updatedList.findIndex(c => c.id === clientB.id);
+
+      if (idxA !== -1 && idxB !== -1) {
+        // Swap their orderIndex
+        const tempOrder = updatedList[idxA].orderIndex;
+        updatedList[idxA].orderIndex = updatedList[idxB].orderIndex;
+        updatedList[idxB].orderIndex = tempOrder;
+
+        // Persist to document snapshots
+        await updateDoc(doc(db, 'clients', clientA.id), {
+          orderIndex: updatedList[idxA].orderIndex,
+          updatedAt: serverTimestamp()
+        });
+        await updateDoc(doc(db, 'clients', clientB.id), {
+          orderIndex: updatedList[idxB].orderIndex,
+          updatedAt: serverTimestamp()
+        });
+
+        await logAdminAction(
+          'REORDER_CLIENTS',
+          `Clientes: ${clientA.establishmentName}`,
+          `Alterou a ordem de exibição dos clientes "${clientA.establishmentName}" e "${clientB.establishmentName}" no painel.`
+        );
+
+        setSuccessText('Ordenação dos clientes atualizada com sucesso!');
+        setTimeout(() => setSuccessText(''), 3000);
+      }
+    } catch (err) {
+      console.error('Error reordering clients:', err);
+      setErrorText('Erro ao persistir a nova ordenação de clientes.');
+    }
+  };
 
   const openAddModal = () => {
     setEditingClient(null);
@@ -423,12 +487,14 @@ export default function ClientRegistry({ onImpersonate }: ClientRegistryProps) {
           `Atualizou dados cadastrais do estabelecimento "${establishmentName}".`
         );
       } else {
-        // Complete create snapshot
+        // Complete create snapshot - calculate next orderIndex at bottom of list
+        const maxOrder = clients.reduce((max, c) => (c.orderIndex !== undefined ? Math.max(max, c.orderIndex) : max), 0);
         const docRef = doc(db, path, clientId);
         await setDoc(docRef, {
           ...clientPayload,
           id: clientId,
           ownerId: currentUserId,
+          orderIndex: maxOrder + 10,
           createdAt: serverTimestamp()
         });
         setSuccessText('Cliente registrado com sucesso!');
@@ -637,24 +703,57 @@ export default function ClientRegistry({ onImpersonate }: ClientRegistryProps) {
       )}
 
       {/* Filter and Search rail */}
-      <div className="flex items-center gap-3 bg-white px-4 py-3 rounded-xl border border-slate-200 shadow-xxs">
-        <Search className="w-4.5 h-4.5 text-slate-400 shrink-0" />
-        <input
-          type="text"
-          id="search-clients-input"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Pesquisar por estabelecimento, usuário, e-mail, telefone, cidade ou estado..."
-          className="flex-1 bg-transparent border-0 outline-none placeholder-slate-400 text-xs text-slate-700 focus:ring-0"
-        />
-        {searchTerm && (
-          <button 
-            onClick={() => setSearchTerm('')}
-            className="text-slate-400 hover:text-slate-600 text-xs font-mono px-1.5 py-0.5 hover:bg-slate-100 rounded"
-          >
-            Limpar
-          </button>
-        )}
+      <div className="flex flex-col md:flex-row md:items-center gap-3 bg-white px-4 py-3 rounded-xl border border-slate-200 shadow-xxs">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <Search className="w-4.5 h-4.5 text-slate-400 shrink-0" />
+          <input
+            type="text"
+            id="search-clients-input"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Pesquisar por estabelecimento, usuário, e-mail, telefone, cidade ou estado..."
+            className="flex-1 bg-transparent border-0 outline-none placeholder-slate-400 text-xs text-slate-700 focus:ring-0 min-w-0"
+          />
+          {searchTerm && (
+            <button 
+              onClick={() => setSearchTerm('')}
+              className="text-slate-400 hover:text-slate-600 text-xs font-mono px-1.5 py-0.5 hover:bg-slate-100 rounded shrink-0"
+            >
+              Limpar
+            </button>
+          )}
+        </div>
+        <div className="w-full md:w-auto flex items-center justify-between md:justify-end gap-3 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
+          <div className="w-px h-6 bg-slate-200 hidden md:block" />
+          <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 w-full md:w-auto">
+            <button
+              type="button"
+              onClick={() => setViewMode('table')}
+              className={`flex-1 md:flex-none px-3 py-1 text-[10.5px] font-bold rounded-md flex items-center justify-center gap-1.5 transition cursor-pointer select-none ${
+                viewMode === 'table'
+                  ? 'bg-indigo-605 bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-550 hover:text-slate-800'
+              }`}
+              title="Visualização em Lista / Linhas Tabela (Suporta Reordenação)"
+            >
+              <List className="w-3.5 h-3.5" />
+              <span>Tabela (Exibir Linhas)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('cards')}
+              className={`flex-1 md:flex-none px-3 py-1 text-[10.5px] font-bold rounded-md flex items-center justify-center gap-1.5 transition cursor-pointer select-none ${
+                viewMode === 'cards'
+                  ? 'bg-indigo-605 bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-550 hover:text-slate-800'
+              }`}
+              title="Visualização em Grade de Cards"
+            >
+              <Grid className="w-3.5 h-3.5" />
+              <span>Grade de Cards</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* List content loader or empty state */}
@@ -687,8 +786,228 @@ export default function ClientRegistry({ onImpersonate }: ClientRegistryProps) {
             </button>
           )}
         </div>
+      ) : viewMode === 'table' ? (
+        /* Real-time Dynamic Table Rows with Arrow Sorting Controls */
+        <div className="overflow-x-auto bg-white rounded-xl border border-slate-200 shadow-xxs">
+          <table className="w-full text-left border-collapse min-w-[950px]">
+            <thead>
+              <tr className="bg-slate-50/75 border-b border-slate-200 text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                <th className="py-3.5 px-4 w-28 text-center">Posição / Reordenar</th>
+                <th className="py-3.5 px-4">Estabelecimento / Acesso</th>
+                <th className="py-3.5 px-4">Contatos</th>
+                <th className="py-3.5 px-4">Plano Detalhado</th>
+                <th className="py-3.5 px-3">Status de Sinal TVs</th>
+                <th className="py-3.5 px-4 text-right">Ações de Gestão</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-150 text-xs text-slate-700 leading-normal">
+              {filteredClients.map((client, index) => {
+                const hasPassword = !!client.password;
+                const reveal = !!showPasswordMap[client.id];
+                const clientScreens = screens.filter((s) => s.clientId === client.id);
+                const screenCount = clientScreens.length;
+                const activeCount = clientScreens.filter((s) => s.contentType !== 'standby').length;
+                const pl = plans.find((p) => p.id === client.planId);
+
+                return (
+                  <tr 
+                    key={client.id} 
+                    id={`client-row-${client.id}`}
+                    className="hover:bg-slate-50/40 transition duration-150"
+                  >
+                    {/* Index & Sorting order arrows */}
+                    <td className="py-4 px-4 align-middle">
+                      <div className="flex items-center justify-center gap-1.5 bg-slate-50 border border-slate-150 px-2 py-1.5 rounded-lg w-fit mx-auto shadow-inner">
+                        <span className="font-mono text-xs font-bold text-slate-500 w-5 text-center">
+                          {index + 1}
+                        </span>
+                        <div className="flex flex-col gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() => handleReorder(index, 'up')}
+                            disabled={index === 0}
+                            title="Mover Para Cima (Subir Linha)"
+                            className="p-0.5 text-slate-400 hover:text-indigo-600 disabled:text-slate-200 disabled:cursor-not-allowed hover:bg-slate-100 rounded transition cursor-pointer"
+                          >
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleReorder(index, 'down')}
+                            disabled={index === filteredClients.length - 1}
+                            title="Mover Para Baixo (Descer Linha)"
+                            className="p-0.5 text-slate-400 hover:text-indigo-600 disabled:text-slate-200 disabled:cursor-not-allowed hover:bg-slate-100 rounded transition cursor-pointer"
+                          >
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Establishment details */}
+                    <td className="py-4 px-4 align-top">
+                      <div className="space-y-1">
+                        <h4 className="font-bold text-slate-800 uppercase tracking-tight text-xs">
+                          {client.establishmentName}
+                        </h4>
+                        <div className="flex flex-col gap-0.5">
+                          <p className="text-[10px] text-slate-500 font-mono flex items-center gap-1">
+                            <span className="text-slate-400 font-semibold uppercase tracking-wider text-[8px]">User:</span>
+                            <span className="font-bold text-indigo-600">{client.username}</span>
+                          </p>
+                          <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-mono">
+                            <span className="text-slate-400 font-semibold uppercase tracking-wider text-[8px]">Senha:</span>
+                            <span className="font-semibold text-slate-600">
+                              {hasPassword ? (reveal ? client.password : '••••••••') : 'N/A'}
+                            </span>
+                            {hasPassword && (
+                              <button
+                                type="button"
+                                onClick={() => togglePasswordVisibility(client.id)}
+                                className="text-slate-400 hover:text-indigo-600 p-0.5 transition"
+                              >
+                                {reveal ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Contact metadata */}
+                    <td className="py-4 px-4 align-top">
+                      <div className="space-y-1.5">
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-1 text-[10.5px]">
+                            <Phone className="w-3 h-3 text-indigo-400 shrink-0" />
+                            <span className="text-[9px] text-slate-400 font-mono mr-0.5">Fone:</span>
+                            {renderPhoneWithFlag(client.phone)}
+                          </div>
+                          {client.whatsapp && (
+                            <div className="flex items-center gap-1 text-[10.5px]">
+                              <MessageSquare className="w-3 h-3 text-emerald-500 shrink-0" />
+                              <span className="text-[9px] text-slate-400 font-mono mr-0.5">Whats:</span>
+                              {renderPhoneWithFlag(client.whatsapp)}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 text-[10.5px] text-slate-650 truncate max-w-[180px]">
+                          <Mail className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span className="truncate text-slate-500" title={client.email}>{client.email}</span>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Active assigned pricing plan */}
+                    <td className="py-4 px-4 align-top">
+                      <div className="space-y-1 bg-slate-50/50 p-2 rounded-lg border border-slate-150 max-w-[170px]">
+                        <span className="text-[10px] font-bold text-indigo-805 leading-none">
+                          {pl ? pl.name : 'Nenhum Plano'}
+                        </span>
+                        <span className="text-[9.5px] font-mono text-slate-500 block">
+                          {pl ? (pl.price !== null ? `R$ ${pl.price.toFixed(2)}` : 'Em Aberto') : 'R$ 0,00'}
+                          {pl ? ` (${pl.maxScreens} ${pl.maxScreens === 1 ? 'TV' : 'TVs'})` : ''}
+                        </span>
+                        <div className="border-t border-slate-200/60 pt-1 mt-1 text-[9.5px] text-slate-500 flex justify-between select-none font-sans">
+                          <span className="text-slate-400 font-medium">📅 Venc.:</span>
+                          <span className="font-bold text-indigo-600 font-mono">
+                            {(() => {
+                              if (!client.vencimento) return 'Sem data';
+                              const parts = client.vencimento.split('-');
+                              if (parts.length === 3) {
+                                return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                              }
+                              return client.vencimento;
+                            })()}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* TV controller override checks */}
+                    <td className="py-4 px-3 align-top">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-1 text-[10px]">
+                          <span className="text-slate-500 font-semibold font-mono flex items-center gap-1">
+                            <Tv className="w-3.5 h-3.5 text-indigo-400" />
+                            Displays ({screenCount})
+                          </span>
+                          {screenCount > 0 ? (
+                            <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 text-[8.5px] font-bold rounded border border-emerald-250 font-mono">
+                              {activeCount} Ativa(s)
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 bg-slate-100 text-slate-400 text-[8.5px] font-bold rounded border border-slate-200 font-mono">
+                              Sem TV
+                            </span>
+                          )}
+                        </div>
+
+                        {screenCount > 0 && (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleStopExibicao(client.id)}
+                              title="Colocar TVs em Standby"
+                              className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 hover:text-amber-800 rounded font-bold text-[8.5px] cursor-pointer"
+                            >
+                              Parar Exibição
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleAtivarExibicao(client.id)}
+                              title="Tornar TVs Ativas"
+                              className="px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 hover:text-emerald-800 rounded font-bold text-[8.5px] cursor-pointer"
+                            >
+                              Ativar Exibição
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* General rows operational control buttons */}
+                    <td className="py-4 px-4 align-middle text-right">
+                      <div className="flex flex-col md:flex-row items-end md:items-center justify-end gap-1.5">
+                        {onImpersonate && (
+                          <button
+                            type="button"
+                            onClick={() => onImpersonate(client)}
+                            className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10.5px] font-bold flex items-center gap-1 transition cursor-pointer shadow-xs hover:shadow-sm"
+                            title="Acessar o Painel Administrativo do Cliente"
+                          >
+                            <Tv className="w-3 h-3" />
+                            <span>Acessar Canal</span>
+                          </button>
+                        )}
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(client)}
+                            title="Editar Cliente"
+                            className="p-1.5 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 text-slate-500 hover:text-slate-800 rounded-lg transition-all duration-150 cursor-pointer"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteClient(client.id)}
+                            title="Excluir Registro"
+                            className="p-1.5 hover:bg-rose-50 border border-slate-200 hover:border-rose-300 text-slate-500 hover:text-rose-600 rounded-lg transition-all duration-150 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       ) : (
-        /* Responsive list grid */
+        /* Responsive list grid fallback */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredClients.map((client) => {
             const hasPassword = !!client.password;
@@ -882,7 +1201,7 @@ export default function ClientRegistry({ onImpersonate }: ClientRegistryProps) {
                                 onClick={() => handleAtivarExibicao(client.id)}
                                 disabled={screenCount === 0}
                                 title="Ativar exibição das TVs vinculadas (Ativo)"
-                                className="py-1.5 px-2 bg-emerald-50 hover:bg-emerald-100 disabled:bg-slate-50 border border-emerald-200 disabled:border-slate-150 disabled:opacity-40 text-emerald-700 disabled:text-slate-400 disabled:cursor-not-allowed rounded-lg text-[10px] font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                                className="py-1.5 px-2 bg-emerald-50 hover:bg-emerald-100 disabled:bg-slate-50 border border-emerald-200 disabled:border-slate-150 disabled:opacity-40 text-emerald-750 disabled:text-slate-400 disabled:cursor-not-allowed rounded-lg text-[10px] font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
                               >
                                 <Play className="w-3.5 h-3.5 shrink-0" />
                                 <span>Ativar Exibição</span>

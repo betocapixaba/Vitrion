@@ -148,6 +148,7 @@
         "state": { "type": "string" },
         "cep": { "type": "string" },
         "planId": { "type": "string", "description": "References the acquired plan ID (e.g. plan_1)" },
+        "orderIndex": { "type": "integer", "description": "Display order index in control panel lists" },
         "ownerId": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }

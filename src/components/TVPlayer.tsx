@@ -6,12 +6,12 @@ import { VitrionLogo } from './VitrionLogo';
 import { 
   Tv, Sparkles, RefreshCw, Layers, Clock, ShieldCheck, 
   Expand, Maximize, CheckCircle2, AlertCircle, Play, Film, AlertTriangle, X,
-  Zap
+  Zap, Power
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 // @ts-ignore
-import vitrionWallpaper from '../assets/images/vitrion_wallpaper_1781184254895.jpg';
+import vitrionLogoOficial from '../assets/images/vitrion_logo_oficial.png';
 
 // Generates a random uppercase pairing code (4 characters)
 function generatePairingCode(): string {
@@ -87,37 +87,56 @@ function deleteIndexedDBValue(key: string): Promise<void> {
 }
 
 function getCookie(name: string): string | null {
-  const nameEQ = name + "=";
-  const ca = document.cookie.split(';');
-  for (let i = 0; i < ca.length; i++) {
-    let c = ca[i];
-    while (c.charAt(0) === ' ') c = c.substring(1, c.length);
-    if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+  try {
+    const nameEQ = name + "=";
+    const ca = document.cookie.split(';');
+    for (let i = 0; i < ca.length; i++) {
+      let c = ca[i];
+      while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+      if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+    }
+  } catch (e) {
+    console.warn("Could not read cookie due to sandboxing:", e);
   }
   return null;
 }
 
 function setCookie(name: string, value: string, days: number = 365 * 10) {
-  let expires = "";
-  if (days) {
-    const date = new Date();
-    date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
-    expires = "; expires=" + date.toUTCString();
+  try {
+    let expires = "";
+    if (days) {
+      const date = new Date();
+      date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1050)); // about 365 days
+      expires = "; expires=" + date.toUTCString();
+    }
+    document.cookie = name + "=" + (value || "") + expires + "; path=/; SameSite=Lax";
+  } catch (e) {
+    console.warn("Could not set cookie due to sandboxing:", e);
   }
-  document.cookie = name + "=" + (value || "") + expires + "; path=/; SameSite=Lax";
 }
 
 function eraseCookie(name: string) {
-  document.cookie = name + '=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT; SameSite=Lax';
+  try {
+    document.cookie = name + '=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT; SameSite=Lax';
+  } catch (e) {
+    console.warn("Could not erase cookie due to sandboxing:", e);
+  }
 }
 
 function getStoredScreenId(): string | null {
   if (typeof window === 'undefined') return null;
-  let id = localStorage.getItem('op_player_screen_id');
+  let id: string | null = null;
+  try {
+    id = localStorage.getItem('op_player_screen_id');
+  } catch (e) {
+    console.warn('Could not read localStorage due to sandboxing:', e);
+  }
   if (!id) {
     id = getCookie('op_player_screen_id');
     if (id) {
-      localStorage.setItem('op_player_screen_id', id);
+      try {
+        localStorage.setItem('op_player_screen_id', id);
+      } catch (e) {}
     }
   } else {
     setCookie('op_player_screen_id', id);
@@ -127,14 +146,18 @@ function getStoredScreenId(): string | null {
 
 function setStoredScreenId(id: string) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem('op_player_screen_id', id);
+  try {
+    localStorage.setItem('op_player_screen_id', id);
+  } catch (e) {}
   setCookie('op_player_screen_id', id);
   setIndexedDBValue('op_player_screen_id', id);
 }
 
 function removeStoredScreenId() {
   if (typeof window === 'undefined') return;
-  localStorage.removeItem('op_player_screen_id');
+  try {
+    localStorage.removeItem('op_player_screen_id');
+  } catch (e) {}
   eraseCookie('op_player_screen_id');
   deleteIndexedDBValue('op_player_screen_id');
 }
@@ -303,8 +326,16 @@ export default function TVPlayer() {
         const idbCode = await getIndexedDBValue('op_player_screen_id');
         if (idbCode) {
           code = idbCode;
-          if (!localStorage.getItem('op_player_screen_id') || !getCookie('op_player_screen_id')) {
-            localStorage.setItem('op_player_screen_id', idbCode);
+          let needsSave = false;
+          try {
+            needsSave = !localStorage.getItem('op_player_screen_id') || !getCookie('op_player_screen_id');
+          } catch (e) {
+            needsSave = !getCookie('op_player_screen_id');
+          }
+          if (needsSave) {
+            try {
+              localStorage.setItem('op_player_screen_id', idbCode);
+            } catch (e) {}
             setCookie('op_player_screen_id', idbCode);
           }
         } else {
@@ -313,10 +344,6 @@ export default function TVPlayer() {
       }
 
       const registerNewScreen = async (newCode: string, attempt = 1): Promise<boolean> => {
-        if (attempt > 3) {
-          setErrorMessage("Falha de permissão ou conexão ao registrar o monitor. Verifique as regras do Firestore.");
-          return false;
-        }
         try {
           const ref = doc(db, 'screens', newCode);
           await setDoc(ref, {
@@ -336,41 +363,60 @@ export default function TVPlayer() {
           setScreenId(newCode);
           return true;
         } catch (err: any) {
-          console.error("Erro ao registrar monitor:", err);
+          console.error(`Erro ao registrar monitor (tentativa ${attempt}):`, err);
           if (err?.code === 'permission-denied') {
-            setErrorMessage("Permissão negada pelo Firebase (Permission Denied). Verifique as regras de segurança.");
+            setErrorMessage("Permissão negada pelo Firebase (Permission Denied). Verifique se as regras de segurança permitem registro anônimo.");
             return false;
           }
-          const retryCode = generatePairingCode();
-          return registerNewScreen(retryCode, attempt + 1);
+          if (attempt < 3) {
+            const retryCode = generatePairingCode();
+            // Wait 1.2s before retrying registration
+            await new Promise(r => setTimeout(r, 1200));
+            return registerNewScreen(retryCode, attempt + 1);
+          }
+          setErrorMessage(`Falha na conexão ao registrar o monitor. Detalhes: ${err?.message || err}`);
+          return false;
         }
       };
 
-      try {
-        if (code) {
-          const ref = doc(db, 'screens', code);
-          const snap = await getDoc(ref);
-          if (snap.exists()) {
-            if (urlScreenId) {
-              setStoredScreenId(urlScreenId);
+      let initAttempt = 1;
+      const runInit = async (): Promise<boolean> => {
+        try {
+          if (code) {
+            const ref = doc(db, 'screens', code);
+            const snap = await getDoc(ref);
+            if (snap.exists()) {
+              if (urlScreenId) {
+                setStoredScreenId(urlScreenId);
+              }
+              setScreenId(code);
+              return true;
+            } else {
+              console.warn(`Código ${code} não encontrado no Firestore. Re-registrando...`);
+              return await registerNewScreen(code);
             }
-            setScreenId(code);
           } else {
-            console.warn(`Código ${code} não encontrado no Firestore. Re-registrando...`);
-            await registerNewScreen(code);
+            const freshCode = generatePairingCode();
+            return await registerNewScreen(freshCode);
           }
-        } else {
-          const freshCode = generatePairingCode();
-          await registerNewScreen(freshCode);
+        } catch (err: any) {
+          console.error(`Erro na inicialização do player (tentativa ${initAttempt}):`, err);
+          if (err?.code === 'permission-denied') {
+            setErrorMessage("Erro de permissão (Permission Denied) ao acessar Firestore. Verifique se as regras de segurança permitem sua leitura.");
+            return false;
+          }
+          if (initAttempt < 3) {
+            initAttempt++;
+            // Wait 1.5 seconds before retrying
+            await new Promise(r => setTimeout(r, 1500));
+            return runInit();
+          }
+          setErrorMessage(`Erro de conexão com o banco de dados. Detalhes: ${err?.message || err}`);
+          return false;
         }
-      } catch (err: any) {
-        console.error("Erro na inicialização do player:", err);
-        if (err?.code === 'permission-denied') {
-          setErrorMessage("Erro de permissão (Permission Denied) ao acessar Firestore. Verifique as regras.");
-        } else {
-          setErrorMessage("Erro de conexão com o banco de dados.");
-        }
-      }
+      };
+
+      await runInit();
     };
 
     initScreen();
@@ -689,15 +735,15 @@ export default function TVPlayer() {
     return (
       <div ref={containerRef} className="min-h-screen w-full bg-slate-950 flex flex-col justify-between p-6 sm:p-8 text-white relative overflow-hidden font-sans select-none">
         
-        {/* Ambient brand wallpaper background */}
-        <div className="absolute inset-0 z-0">
+        {/* Ambient brand logo background */}
+        <div className="absolute inset-0 z-0 flex items-center justify-center p-12">
           <img 
-            src={vitrionWallpaper} 
+            src={vitrionLogoOficial} 
             alt="" 
-            className="w-full h-full object-cover opacity-20"
+            className="max-h-[60vh] max-w-full object-contain opacity-10"
             referrerPolicy="no-referrer"
           />
-          <div className="absolute inset-0 bg-slate-950/75 backdrop-blur-xs" />
+          <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-xs" />
         </div>
 
         <header className="flex items-center justify-between border-b border-white/5 pb-4 shrink-0 z-10">
@@ -901,14 +947,22 @@ export default function TVPlayer() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black flex items-center justify-center"
+            className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 text-center"
           >
-            <img 
-              src={vitrionWallpaper} 
-              alt="Modo Standby" 
-              className="w-full h-full object-cover"
-              referrerPolicy="no-referrer"
-            />
+            <div className="space-y-4">
+              <span className="text-[10px] bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 px-2.5 py-1 rounded-full font-bold uppercase tracking-widest animate-pulse">
+                Modo Standby 💤
+              </span>
+              <div className="text-5xl sm:text-6xl font-mono font-bold tracking-tight text-white animate-pulse">
+                {realtimeClock}
+              </div>
+              <p className="text-xs text-slate-500 max-w-xs uppercase tracking-widest font-mono">
+                Smart TV ativa • Aguardando programação
+              </p>
+            </div>
+            <div className="absolute bottom-8 text-center text-[8px] text-slate-600 uppercase tracking-widest font-mono">
+              Vitrion Digital Signage Screen
+            </div>
           </motion.div>
         ) : screenDoc.contentType === 'stopped' ? (
           <motion.div 
@@ -916,14 +970,19 @@ export default function TVPlayer() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black flex items-center justify-center"
+            className="absolute inset-0 bg-black flex flex-col items-center justify-center p-6 text-center select-none"
           >
-            <img 
-              src={vitrionWallpaper} 
-              alt="Transmissão Parada" 
-              className="w-full h-full object-cover"
-              referrerPolicy="no-referrer"
-            />
+            <div className="flex flex-col items-center gap-2">
+              <div className="w-8 h-8 rounded-full border border-rose-500/20 bg-rose-950/20 flex items-center justify-center text-rose-500 animate-pulse">
+                <Power className="w-4 h-4" />
+              </div>
+              <span className="text-[9px] text-rose-500/60 uppercase font-black tracking-widest font-mono">
+                Monitor Desligado
+              </span>
+              <span className="text-[8px] text-slate-755 font-mono mt-0.5 text-slate-600">
+                Pressione POWER no controle remoto para iniciar
+              </span>
+            </div>
           </motion.div>
         ) : !activeAsset ? (
           <motion.div 
@@ -931,14 +990,27 @@ export default function TVPlayer() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black flex items-center justify-center"
+            className="absolute inset-0 bg-[#020B18] flex flex-col items-center justify-center p-8 text-center"
           >
-            <img 
-              src={vitrionWallpaper} 
-              alt="Aguardando Sinal" 
-              className="w-full h-full object-cover"
-              referrerPolicy="no-referrer"
-            />
+            <div className="space-y-5 flex flex-col items-center">
+              <div className="relative w-16 h-16 flex items-center justify-center">
+                <span className="absolute inset-0 rounded-full bg-indigo-500/10 border border-indigo-400/20 animate-ping" />
+                <div className="w-12 h-12 rounded-full bg-indigo-950 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                  <Tv className="w-6 h-6 animate-pulse" />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-black font-mono tracking-wider " style={{ fontSize: '9px' }}>
+                  CONECTADO ✔
+                </span>
+                <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider font-sans">
+                  Sinal Ativo • Canal Ocioso
+                </h4>
+                <p className="text-[10px] text-slate-400 max-w-xs leading-relaxed font-sans mt-1">
+                  Esta Smart TV está pareada e pronta. Use o Painel ou o Controle Remoto para sintonizar uma mídia ou playlist.
+                </p>
+              </div>
+            </div>
           </motion.div>
         ) : (
           <motion.div
