@@ -1607,24 +1607,66 @@ export default function ClientPortal({
                             )}
                           </h3>
 
-                          <div className="flex items-center gap-1 text-[11px] text-slate-400">
-                            <span>Código de Pareamento: </span>
-                            <span className="font-mono font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded text-xs select-all">
-                              {screen.pairingCode}
-                            </span>
-                            <button
-                              onClick={() => handleCopyCode(screen.pairingCode)}
-                              className="p-1 hover:text-white text-slate-500 transition ml-0.5"
-                              title="Copiar Código"
-                            >
-                              {copiedCode === screen.pairingCode ? (
-                                <Check className="w-3.5 h-3.5 text-emerald-400" />
-                              ) : (
-                                <Copy className="w-3.5 h-3.5" />
-                              )}
-                            </button>
+                          <div className="flex flex-col gap-1.5 mt-1">
+                            <div className="flex items-center gap-1 text-[11px] text-slate-400">
+                              <span>Código de Pareamento: </span>
+                              <span className="font-mono font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded text-xs select-all">
+                                {screen.pairingCode}
+                              </span>
+                              <button
+                                onClick={() => handleCopyCode(screen.pairingCode)}
+                                className="p-1 hover:text-white text-slate-500 transition ml-0.5 cursor-pointer"
+                                title="Copiar Código"
+                              >
+                                {copiedCode === screen.pairingCode ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </div>
 
-                            
+                            {/* Direct URL block for Amazon Silk or general bookmarking */}
+                            <div className="flex items-center gap-1.5 bg-slate-900/60 p-2 rounded-lg border border-slate-800/80 max-w-sm">
+                              <span className="text-[10px] text-slate-400 font-bold shrink-0 uppercase tracking-wider font-mono">
+                                URL Silk:
+                              </span>
+                              <span 
+                                className="font-mono text-[10px] text-indigo-300 truncate select-all flex-1" 
+                                title={`${window.location.origin}${window.location.pathname}?mode=player&screenId=${screen.id}`}
+                              >
+                                {`${window.location.origin}${window.location.pathname}?mode=player&screenId=${screen.id}`}
+                              </span>
+                              <button
+                                onClick={() => {
+                                  const url = `${window.location.origin}${window.location.pathname}?mode=player&screenId=${screen.id}`;
+                                  try {
+                                    navigator.clipboard.writeText(url);
+                                    setCopiedCode(url);
+                                    setTimeout(() => setCopiedCode(null), 2000);
+                                  } catch (err) {
+                                    console.warn("Navegador bloqueou escrita no clipboard.", err);
+                                  }
+                                }}
+                                className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition shrink-0 cursor-pointer"
+                                title="Copiar URL para o Amazon Silk Browser"
+                              >
+                                {copiedCode === `${window.location.origin}${window.location.pathname}?mode=player&screenId=${screen.id}` ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                              <a
+                                href={`${window.location.origin}${window.location.pathname}?mode=player&screenId=${screen.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1 text-indigo-400 hover:text-indigo-300 hover:bg-slate-850 rounded transition shrink-0"
+                                title="Abrir Player em tela cheia"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            </div>
                           </div>
                         </div>
 
