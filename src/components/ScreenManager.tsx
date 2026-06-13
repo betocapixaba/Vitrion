@@ -1575,42 +1575,49 @@ export default function ScreenManager() {
                           </div>
 
                           {/* Column 4: Quick Links */}
-                          <div className="flex flex-col md:flex-row items-start md:items-center gap-2 select-none font-mono" onClick={(e) => e.stopPropagation()}>
-                            <a
-                              href={`${window.location.origin}${window.location.pathname}?mode=player&screenId=${screen.id}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[10px] text-indigo-650 hover:text-indigo-805 hover:underline font-bold flex items-center gap-0.5 bg-indigo-50 border border-indigo-150 rounded px-2 py-1 transition"
-                              title="Abrir player remoto em outra aba"
-                            >
-                              <ExternalLink className="w-3 h-3" /> Player Remoto
-                            </a>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const url = `${window.location.origin}${window.location.pathname}?mode=player&screenId=${screen.id}`;
-                                try {
-                                  navigator.clipboard.writeText(url);
-                                  setCopiedUrl(url);
-                                  setTimeout(() => setCopiedUrl(null), 2000);
-                                } catch (err) {
-                                  console.warn("Clipboard blocked", err);
-                                }
-                              }}
-                              className="text-[10px] text-slate-600 hover:text-slate-800 hover:bg-slate-100 border border-slate-200 rounded px-2 py-1 transition flex items-center gap-1 cursor-pointer"
-                              title="Copiar link completo da TV para salvar no Amazon Silk Browser"
-                            >
-                              {copiedUrl === `${window.location.origin}${window.location.pathname}?mode=player&screenId=${screen.id}` ? (
-                                <>
-                                  <Check className="w-3 h-3 text-emerald-500" /> Copiado!
-                                 </>
-                              ) : (
-                                <>
-                                  <Copy className="w-3 h-3 text-slate-450" /> Copiar Link Silk
-                                </>
-                              )}
-                            </button>
+                          <div className="flex flex-col gap-1.5 select-none font-mono" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center gap-1.5 bg-indigo-50/70 border border-indigo-100 p-1.5 px-2.5 rounded-lg max-w-full md:max-w-sm">
+                              <span className="text-[9px] text-indigo-800 font-bold shrink-0 uppercase tracking-widest">
+                                URL Silk:
+                              </span>
+                              <span 
+                                className="font-mono text-[9.5px] text-indigo-600 truncate select-all flex-1 font-semibold" 
+                                title={`${window.location.origin}${window.location.pathname}?mode=player&screenId=${screen.id}`}
+                              >
+                                {`${window.location.origin}${window.location.pathname}?mode=player&screenId=${screen.id}`}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const url = `${window.location.origin}${window.location.pathname}?mode=player&screenId=${screen.id}`;
+                                  try {
+                                    navigator.clipboard.writeText(url);
+                                    setCopiedUrl(url);
+                                    setTimeout(() => setCopiedUrl(null), 2000);
+                                  } catch (err) {
+                                    console.warn("Clipboard blocked", err);
+                                  }
+                                }}
+                                className="p-1 text-indigo-600 hover:text-indigo-850 hover:bg-indigo-100/80 rounded transition shrink-0 cursor-pointer"
+                                title="Copiar URL para o Amazon Silk Browser"
+                              >
+                                {copiedUrl === `${window.location.origin}${window.location.pathname}?mode=player&screenId=${screen.id}` ? (
+                                  <Check className="w-3.5 h-3.5 text-emerald-600 font-bold" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                              <a
+                                href={`${window.location.origin}${window.location.pathname}?mode=player&screenId=${screen.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1 text-indigo-500 hover:text-indigo-800 hover:bg-indigo-100/80 rounded transition shrink-0"
+                                title="Abrir Player (Salvar nos Favoritos do Silk)"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            </div>
                           </div>
                         </div>
 
@@ -2202,43 +2209,49 @@ export default function ScreenManager() {
                                         </div>
 
                                         {/* Column 3: Quick Links */}
-                                        <div className="flex flex-col lg:flex-row items-start lg:items-center gap-2 select-none font-mono" onClick={(e) => e.stopPropagation()}>
-                                          <a
-                                            href={`${window.location.origin}${window.location.pathname}?mode=player&screenId=${scr.id}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-[10px] text-indigo-650 hover:text-indigo-805 hover:underline font-bold flex items-center gap-0.5 bg-indigo-50 border border-indigo-150 rounded px-2 py-1 transition"
-                                            title="Abrir player remoto em outra aba"
-                                          >
-                                            <ExternalLink className="w-3 h-3" /> Player Remoto
-                                          </a>
-                                          <button
-                                            type="button"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              const url = `${window.location.origin}${window.location.pathname}?mode=player&screenId=${scr.id}`;
-                                              try {
-                                                navigator.clipboard.writeText(url);
-                                                setCopiedUrl(url);
-                                                setTimeout(() => setCopiedUrl(null), 2000);
-                                              } catch (err) {
-                                                console.warn("Clipboard blocked", err);
-                                              }
-                                            }}
-                                            className="text-[10px] text-slate-600 hover:text-slate-800 hover:bg-slate-100 border border-slate-200 rounded px-2 py-1 transition flex items-center gap-1 cursor-pointer"
-                                            title="Copiar link completo da TV para salvar no Amazon Silk Browser"
-                                          >
-                                            {copiedUrl === `${window.location.origin}${window.location.pathname}?mode=player&screenId=${scr.id}` ? (
-                                              <>
-                                                <Check className="w-3.5 h-3.5 text-emerald-500" /> Copiado!
-                                              </>
-                                            ) : (
-                                              <>
-                                                <Copy className="w-3.5 h-3.5 text-slate-450" /> Copiar Link Silk
-                                              </>
-                                            )}
-                                          </button>
-                                          
+                                        <div className="flex flex-col gap-1.5 select-none font-mono" onClick={(e) => e.stopPropagation()}>
+                                          <div className="flex items-center gap-1.5 bg-indigo-50/70 border border-indigo-100 p-1.5 px-2.5 rounded-lg max-w-full lg:max-w-xs">
+                                            <span className="text-[9px] text-indigo-800 font-bold shrink-0 uppercase tracking-widest">
+                                              URL Silk:
+                                            </span>
+                                            <span 
+                                              className="font-mono text-[9.5px] text-indigo-600 truncate select-all flex-1 font-semibold" 
+                                              title={`${window.location.origin}${window.location.pathname}?mode=player&screenId=${scr.id}`}
+                                            >
+                                              {`${window.location.origin}${window.location.pathname}?mode=player&screenId=${scr.id}`}
+                                            </span>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                const url = `${window.location.origin}${window.location.pathname}?mode=player&screenId=${scr.id}`;
+                                                try {
+                                                  navigator.clipboard.writeText(url);
+                                                  setCopiedUrl(url);
+                                                  setTimeout(() => setCopiedUrl(null), 2000);
+                                                } catch (err) {
+                                                  console.warn("Clipboard blocked", err);
+                                                }
+                                              }}
+                                              className="p-1 text-indigo-600 hover:text-indigo-850 hover:bg-indigo-100/80 rounded transition shrink-0 cursor-pointer"
+                                              title="Copiar URL para o Amazon Silk Browser"
+                                            >
+                                              {copiedUrl === `${window.location.origin}${window.location.pathname}?mode=player&screenId=${scr.id}` ? (
+                                                <Check className="w-3.5 h-3.5 text-emerald-600 font-bold" />
+                                              ) : (
+                                                <Copy className="w-3.5 h-3.5" />
+                                              )}
+                                            </button>
+                                            <a
+                                              href={`${window.location.origin}${window.location.pathname}?mode=player&screenId=${scr.id}`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="p-1 text-indigo-500 hover:text-indigo-800 hover:bg-indigo-100/80 rounded transition shrink-0"
+                                              title="Abrir Player (Salvar nos Favoritos do Silk)"
+                                            >
+                                              <ExternalLink className="w-3.5 h-3.5" />
+                                            </a>
+                                          </div>
                                         </div>
                                       </div>
 
