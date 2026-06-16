@@ -659,28 +659,86 @@ export default function TVPlayer() {
     return () => clearTimeout(timeoutId);
   }, [playlistItems, playlistIndex]);
 
-  // Toggle Fullscreen view helper
+  // Helper to check if fullscreen is active across multiple browser rendering engines
+  const checkIsFullscreen = () => {
+    if (typeof document === 'undefined') return false;
+    return !!(
+      document.fullscreenElement ||
+      (document as any).webkitFullscreenElement ||
+      (document as any).mozFullScreenElement ||
+      (document as any).msFullscreenElement ||
+      (document as any).webkitIsFullScreen ||
+      (document as any).mozFullScreen ||
+      (document as any).msFullscreenActive
+    );
+  };
+
+  // Toggle Fullscreen view helper supporting vendor prefixes for Amazon Silk browser / Fire TV
   const handleToggleFullscreen = () => {
     if (!containerRef.current) return;
 
-    if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().then(() => {
-        setIsFullscreen(true);
-      }).catch((err) => {
-        console.error("Failed to go fullscreen", err);
-      });
+    const container = containerRef.current;
+    const isFS = checkIsFullscreen();
+
+    if (!isFS) {
+      const p = container.requestFullscreen ? container.requestFullscreen() :
+                (container as any).webkitRequestFullscreen ? (container as any).webkitRequestFullscreen() :
+                (container as any).webkitRequestFullScreen ? (container as any).webkitRequestFullScreen() :
+                (container as any).mozRequestFullScreen ? (container as any).mozRequestFullScreen() :
+                (container as any).msRequestFullscreen ? (container as any).msRequestFullscreen() :
+                null;
+
+      if (p && typeof p.then === 'function') {
+        p.then(() => {
+          setIsFullscreen(true);
+        }).catch((err) => {
+          console.log("Failed to enter fullscreen via Promise on Silk:", err);
+          // Silk can run webkitRequestFullscreen synchronously
+          setIsFullscreen(checkIsFullscreen());
+        });
+      } else {
+        // Synchronous or silent WebKit prefixed call
+        setTimeout(() => {
+          setIsFullscreen(checkIsFullscreen());
+        }, 150);
+      }
     } else {
-      document.exitFullscreen();
-      setIsFullscreen(false);
+      const exit = document.exitFullscreen ? document.exitFullscreen() :
+                   (document as any).webkitExitFullscreen ? (document as any).webkitExitFullscreen() :
+                   (document as any).webkitCancelFullScreen ? (document as any).webkitCancelFullScreen() :
+                   (document as any).mozCancelFullScreen ? (document as any).mozCancelFullScreen() :
+                   (document as any).msExitFullscreen ? (document as any).msExitFullscreen() :
+                   null;
+
+      if (exit && typeof exit.then === 'function') {
+        exit.then(() => {
+          setIsFullscreen(false);
+        }).catch((err) => {
+          console.log("Failed to exit fullscreen:", err);
+          setIsFullscreen(checkIsFullscreen());
+        });
+      } else {
+        setTimeout(() => {
+          setIsFullscreen(checkIsFullscreen());
+        }, 150);
+      }
     }
   };
 
   useEffect(() => {
     const handleFsChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      setIsFullscreen(checkIsFullscreen());
     };
     document.addEventListener('fullscreenchange', handleFsChange);
-    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+    document.addEventListener('webkitfullscreenchange', handleFsChange);
+    document.addEventListener('mozfullscreenchange', handleFsChange);
+    document.addEventListener('MSFullscreenChange', handleFsChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFsChange);
+      document.removeEventListener('webkitfullscreenchange', handleFsChange);
+      document.removeEventListener('mozfullscreenchange', handleFsChange);
+      document.removeEventListener('MSFullscreenChange', handleFsChange);
+    };
   }, []);
 
   // Keyboard and Remote Control listeners (optimized for Amazon Fire TV / Smart TV D-Pad Select)
@@ -696,52 +754,73 @@ export default function TVPlayer() {
     return () => window.removeEventListener('keydown', handleControlKeys);
   }, [screenId]);
 
-  // Auto-fullscreen on load, on asset shift (image/video/text), and on any first/future user interaction
+  // Auto-fullscreen on load and on any first user interaction (touch, key, click)
   useEffect(() => {
+    let attempted = false;
+
     const autoEnter = () => {
-      if (!containerRef.current) return;
-      if (!document.fullscreenElement) {
-        containerRef.current.requestFullscreen()
-          .then(() => {
+      if (attempted) return;
+      const container = containerRef.current;
+      if (!checkIsFullscreen() && container) {
+        const p = container.requestFullscreen ? container.requestFullscreen() :
+                  (container as any).webkitRequestFullscreen ? (container as any).webkitRequestFullscreen() :
+                  (container as any).webkitRequestFullScreen ? (container as any).webkitRequestFullScreen() :
+                  (container as any).mozRequestFullScreen ? (container as any).mozRequestFullScreen() :
+                  (container as any).msRequestFullscreen ? (container as any).msRequestFullscreen() :
+                  null;
+
+        if (p && typeof p.then === 'function') {
+          p.then(() => {
             setIsFullscreen(true);
+            attempted = true;
+            cleanup();
           })
           .catch((err) => {
-            // Log silently, as browsers block programmatic fullscreen without user gesture.
-            // On Smart TVs/Silk, a keydown or click will unblock this.
-            console.log("Auto-fullscreen postponed (waiting for interaction or Silk permission):", err);
+            console.log("Auto fullscreen request blocked or postponed till next interaction:", err);
           });
-      } else {
-        setIsFullscreen(true);
+        } else if (p) {
+          // Prefixed call executed synchronously 
+          setIsFullscreen(true);
+          attempted = true;
+          cleanup();
+        } else {
+          // Silent fallback checker
+          setTimeout(() => {
+            const fsResult = checkIsFullscreen();
+            if (fsResult) {
+              setIsFullscreen(true);
+              attempted = true;
+              cleanup();
+            }
+          }, 200);
+        }
+      } else if (checkIsFullscreen()) {
+        attempted = true;
+        cleanup();
       }
     };
 
-    // Call immediately (e.g., when a new image asset appears/transitions)
-    const immediateId = setTimeout(autoEnter, 100);
-    const delayedId = setTimeout(autoEnter, 1200);
+    const cleanup = () => {
+      window.removeEventListener('click', autoEnter);
+      window.removeEventListener('keydown', autoEnter);
+      window.removeEventListener('touchstart', autoEnter);
+      window.removeEventListener('mousedown', autoEnter);
+    };
 
-    // Setup fallback interval to keep striving for fullscreen (vital for TV browsers like Amazon Silk,
-    // where background state transitions or pairing activation can unlock fullscreen capabilities)
-    const intervalId = setInterval(() => {
-      if (!document.fullscreenElement && activeAsset) {
-        autoEnter();
-      }
-    }, 1500);
+    // Listen to all interaction events
+    window.addEventListener('click', autoEnter);
+    window.addEventListener('keydown', autoEnter);
+    window.addEventListener('touchstart', autoEnter);
+    window.addEventListener('mousedown', autoEnter);
 
-    // Common remote control and cursor/pointer interaction triggers
-    const triggerEvents = ["click", "keydown", "keyup", "touchstart", "mousedown", "pointerdown"];
-    triggerEvents.forEach(evt => {
-      window.addEventListener(evt, autoEnter, { passive: true });
-    });
+    // Attempt immediately (some modern smart setups allow it under specific criteria/contexts)
+    const timeoutId = setTimeout(autoEnter, 1200);
 
     return () => {
-      clearTimeout(immediateId);
-      clearTimeout(delayedId);
-      clearInterval(intervalId);
-      triggerEvents.forEach(evt => {
-        window.removeEventListener(evt, autoEnter);
-      });
+      cleanup();
+      clearTimeout(timeoutId);
     };
-  }, [screenId, activeAsset]);
+  }, [screenId]);
 
   // 1. Loading screen
   if (!screenId || !screenDoc) {
@@ -993,7 +1072,8 @@ export default function TVPlayer() {
   return (
     <div 
       ref={containerRef} 
-      className="min-h-screen w-full bg-black flex flex-col justify-between text-white relative overflow-hidden font-sans select-none"
+      onClick={handleToggleFullscreen}
+      className="min-h-screen w-full bg-black flex flex-col justify-between text-white relative overflow-hidden font-sans select-none cursor-pointer"
     >
       {isOffBySchedule && (
         <div 
@@ -1150,7 +1230,10 @@ export default function TVPlayer() {
       </AnimatePresence>
 
       {/* Embedded hidden control bar that appears on cursor movements at the very bottom corner */}
-      <div className="absolute bottom-4 left-4 z-40 bg-slate-950/80 backdrop-blur-md p-1.5 rounded-lg border border-white/5 opacity-0 hover:opacity-100 transition duration-300 flex items-center">
+      <div 
+        onClick={(e) => e.stopPropagation()}
+        className="absolute bottom-4 left-4 z-40 bg-slate-950/80 backdrop-blur-md p-1.5 rounded-lg border border-white/5 opacity-0 hover:opacity-100 transition duration-300 flex items-center"
+      >
         <button
           onClick={handleToggleFullscreen}
           className="text-white hover:text-indigo-400 p-1 transition cursor-pointer"
@@ -1159,6 +1242,16 @@ export default function TVPlayer() {
           <Maximize className="w-3.5 h-3.5" />
         </button>
       </div>
+
+      {/* Floating help badge when not in fullscreen (helps Silk / Fire TV users immediately enter fullscreen and hide address bar) */}
+      {!isFullscreen && (
+        <div className="absolute top-6 right-6 z-50 pointer-events-none animate-bounce">
+          <div className="bg-indigo-600/95 border border-indigo-400 text-white text-[10px] sm:text-xs px-4 py-2.5 rounded-full shadow-2xl backdrop-blur-md font-bold uppercase tracking-wider flex items-center gap-2">
+            <Maximize className="w-3.5 h-3.5 animate-pulse text-indigo-200" />
+            <span>Toque na Tela ou aperte [OK] para Tela Cheia (Ocultar Barra Silk)</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
