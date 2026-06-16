@@ -696,49 +696,52 @@ export default function TVPlayer() {
     return () => window.removeEventListener('keydown', handleControlKeys);
   }, [screenId]);
 
-  // Auto-fullscreen on load and on any first user interaction (touch, key, click)
+  // Auto-fullscreen on load, on asset shift (image/video/text), and on any first/future user interaction
   useEffect(() => {
-    let attempted = false;
-
     const autoEnter = () => {
-      if (attempted) return;
-      if (!document.fullscreenElement && containerRef.current) {
+      if (!containerRef.current) return;
+      if (!document.fullscreenElement) {
         containerRef.current.requestFullscreen()
           .then(() => {
             setIsFullscreen(true);
-            attempted = true;
-            cleanup();
           })
           .catch((err) => {
-            console.log("Auto fullscreen request blocked or postponed till next interaction:", err);
+            // Log silently, as browsers block programmatic fullscreen without user gesture.
+            // On Smart TVs/Silk, a keydown or click will unblock this.
+            console.log("Auto-fullscreen postponed (waiting for interaction or Silk permission):", err);
           });
-      } else if (document.fullscreenElement) {
-        attempted = true;
-        cleanup();
+      } else {
+        setIsFullscreen(true);
       }
     };
 
-    const cleanup = () => {
-      window.removeEventListener('click', autoEnter);
-      window.removeEventListener('keydown', autoEnter);
-      window.removeEventListener('touchstart', autoEnter);
-      window.removeEventListener('mousedown', autoEnter);
-    };
+    // Call immediately (e.g., when a new image asset appears/transitions)
+    const immediateId = setTimeout(autoEnter, 100);
+    const delayedId = setTimeout(autoEnter, 1200);
 
-    // Listen to all interaction events
-    window.addEventListener('click', autoEnter);
-    window.addEventListener('keydown', autoEnter);
-    window.addEventListener('touchstart', autoEnter);
-    window.addEventListener('mousedown', autoEnter);
+    // Setup fallback interval to keep striving for fullscreen (vital for TV browsers like Amazon Silk,
+    // where background state transitions or pairing activation can unlock fullscreen capabilities)
+    const intervalId = setInterval(() => {
+      if (!document.fullscreenElement && activeAsset) {
+        autoEnter();
+      }
+    }, 1500);
 
-    // Attempt immediately (some modern smart setups allow it under specific criteria/contexts)
-    const timeoutId = setTimeout(autoEnter, 1200);
+    // Common remote control and cursor/pointer interaction triggers
+    const triggerEvents = ["click", "keydown", "keyup", "touchstart", "mousedown", "pointerdown"];
+    triggerEvents.forEach(evt => {
+      window.addEventListener(evt, autoEnter, { passive: true });
+    });
 
     return () => {
-      cleanup();
-      clearTimeout(timeoutId);
+      clearTimeout(immediateId);
+      clearTimeout(delayedId);
+      clearInterval(intervalId);
+      triggerEvents.forEach(evt => {
+        window.removeEventListener(evt, autoEnter);
+      });
     };
-  }, [screenId]);
+  }, [screenId, activeAsset]);
 
   // 1. Loading screen
   if (!screenId || !screenDoc) {
