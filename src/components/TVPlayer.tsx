@@ -813,8 +813,8 @@ export default function TVPlayer() {
     window.addEventListener('touchstart', autoEnter);
     window.addEventListener('mousedown', autoEnter);
 
-    // Attempt immediately (some modern smart setups allow it under specific criteria/contexts)
-    const timeoutId = setTimeout(autoEnter, 1200);
+    // Attempt immediately after exactly 2 seconds (2000ms) for direct compatibility with media loads
+    const timeoutId = setTimeout(autoEnter, 2000);
 
     return () => {
       cleanup();
