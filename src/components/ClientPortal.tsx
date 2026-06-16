@@ -1192,7 +1192,7 @@ export default function ClientPortal({
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden font-sans text-slate-300">
+    <div className="min-h-screen w-full bg-slate-900 font-sans text-slate-300 overflow-y-auto pb-16">
       {/* Active Impersonation Bar */}
       {hasActiveAdmin() && (
         <div className="bg-gradient-to-r from-amber-600 to-amber-700 text-white px-6 py-2.5 text-xs flex items-center justify-between shadow-inner select-none font-medium border-b border-amber-850">

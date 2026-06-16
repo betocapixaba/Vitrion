@@ -9,32 +9,31 @@ html, body, #root {
   background-color: #000;
 }
 
-/* Elegant, modern scrollbar configuration that appears automatically on content overflow */
+/* Highly visible, high-contrast scrollbar specifically optimized for Smart TVs & TV controllers */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 12px;
+  height: 12px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(15, 23, 42, 0.85); /* Slate-950 deep track */
+  border-radius: 6px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.3); /* Slate-400 with opacity */
-  border-radius: 9999px;
-  border: 2px solid transparent;
+  background: rgba(99, 102, 241, 0.85); /* Highly visible Violet-500/indigo accent color */
+  border-radius: 6px;
+  border: 2px solid rgba(15, 23, 42, 0.9);
   background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(99, 102, 241, 0.5); /* Violet-500 accent on hover */
-  border: 2px solid transparent;
-  background-clip: padding-box;
+  background: rgba(129, 140, 248, 1.0); /* Even brighter highlight on hover */
 }
 
-/* Smooth Firefox integration */
+/* Smooth Firefox support with high-contrast pairing */
 * {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+  scrollbar-width: auto;
+  scrollbar-color: rgba(99, 102, 241, 0.85) rgba(15, 23, 42, 0.85);
 }
 
