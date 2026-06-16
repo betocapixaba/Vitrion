@@ -5,14 +5,12 @@ import {
   ChevronsUp, 
   ChevronsDown, 
   MousePointer, 
-  Settings, 
-  Eye, 
-  EyeOff,
-  Sliders
+  Sliders,
+  EyeOff
 } from "lucide-react";
 
 interface TVScrollbarControllerProps {
-  /** Optional ID of the specific scrollable element. Falls back to window. */
+  /** Optional ID of the specific scrollable element. */
   targetId?: string;
   /** Label for the controller widget */
   label?: string;
@@ -24,65 +22,55 @@ export function TVScrollbarController({
 }: TVScrollbarControllerProps) {
   const [isVisible, setIsVisible] = useState(true);
   const [scrollProgress, setScrollProgress] = useState(0); // 0 to 100
-  const [containerHeight, setContainerHeight] = useState(0);
-  const [scrollHeight, setScrollHeight] = useState(0);
   const [isHoldingUp, setIsHoldingUp] = useState(false);
   const [isHoldingDown, setIsHoldingDown] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  
   const holdIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const trackRef = useRef<HTMLDivElement | null>(null);
 
-  // Helper to find the scrollable element
-  const getScrollElement = (): HTMLElement | null => {
-    if (typeof document === "undefined") return null;
+  // Helper inside utility to get current scroll position from all possible scroll layers
+  const getScrollMetrics = () => {
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return { top: 0, maxScroll: 0, progress: 0 };
+    }
+
     const el = document.getElementById(targetId);
-    if (el) {
-      // An element is only scrollable if its content height transcends its visible client height
-      if (el.scrollHeight > el.clientHeight && el.clientHeight > 0) {
-        return el;
-      }
-    }
-    return null;
-  };
+    const docEl = document.documentElement;
+    const body = document.body;
 
-  // Synchronize scroll position percentage
-  const updateScrollProgress = () => {
-    const el = getScrollElement();
-    if (el) {
+    // Check if the custom scroll container is active and has scrolling capacity
+    if (el && el.scrollHeight > el.clientHeight && el.clientHeight > 0) {
       const top = el.scrollTop;
-      const height = el.scrollHeight - el.clientHeight;
-      setScrollHeight(el.scrollHeight);
-      setContainerHeight(el.clientHeight);
-      if (height > 0) {
-        setScrollProgress((top / height) * 100);
-      } else {
-        setScrollProgress(0);
-      }
-    } else {
-      // Fallback to window/document scrolling
-      if (typeof window !== "undefined") {
-        const docEl = document.documentElement;
-        const body = document.body || { scrollTop: 0, scrollHeight: 0 };
-        const top = window.pageYOffset || window.scrollY || docEl.scrollTop || body.scrollTop || 0;
-        const currentScrollHeight = Math.max(docEl.scrollHeight, body.scrollHeight, 0);
-        const currentClientHeight = window.innerHeight || docEl.clientHeight || 0;
-        const height = currentScrollHeight - currentClientHeight;
-        
-        setScrollHeight(currentScrollHeight);
-        setContainerHeight(currentClientHeight);
-        if (height > 0) {
-          setScrollProgress((top / height) * 100);
-        } else {
-          setScrollProgress(0);
-        }
-      }
+      const maxScroll = el.scrollHeight - el.clientHeight;
+      const progress = maxScroll > 0 ? (top / maxScroll) * 100 : 0;
+      return { top, maxScroll, progress };
     }
+
+    // Default to document body viewport
+    const bodyScrollHeight = body ? body.scrollHeight : 0;
+    const docScrollHeight = docEl ? docEl.scrollHeight : 0;
+    const totalHeight = Math.max(docScrollHeight, bodyScrollHeight, 0);
+    const clientHeight = window.innerHeight || (docEl ? docEl.clientHeight : 0) || 0;
+    const maxScroll = totalHeight - clientHeight;
+    
+    const top = window.pageYOffset || window.scrollY || (docEl ? docEl.scrollTop : 0) || (body ? body.scrollTop : 0) || 0;
+    const progress = maxScroll > 0 ? (top / maxScroll) * 100 : 0;
+    
+    return { top, maxScroll, progress };
   };
 
-  // Listen to scrolls on target element or window
+  // Update percentages based on current document or container coordinates
+  const updateScrollProgress = () => {
+    const { progress } = getScrollMetrics();
+    setScrollProgress(progress);
+  };
+
+  // Keep progress perfectly synchronized via scroll events (element and root) and a timer poll
   useEffect(() => {
-    const el = getScrollElement();
+    const el = document.getElementById(targetId);
     updateScrollProgress();
 
-    // Set up scroll listeners
     const handleScroll = () => {
       updateScrollProgress();
     };
@@ -96,20 +84,20 @@ export function TVScrollbarController({
       el.addEventListener("scroll", handleScroll, { passive: true });
     }
 
-    // Set up a resize observer on target element, if possible, to capture content changes
+    // Set up a resize observer on target element if available
     let observer: ResizeObserver | null = null;
-    const targetEl = document.getElementById(targetId);
-    if (targetEl && typeof ResizeObserver !== "undefined") {
+    if (el && typeof ResizeObserver !== "undefined") {
       observer = new ResizeObserver(() => {
         updateScrollProgress();
       });
-      observer.observe(targetEl);
+      observer.observe(el);
     }
 
-    // Periodic check to capture dynamically loaded screens/assets
-    const timer = setInterval(() => {
+    // High frequency fallback polling (200ms) specifically for TV browsers (Silk/WebOS/Tizen) 
+    // that may fail to dispatch scroll events during quick virtual scrolls or spatial remote inputs
+    const interval = setInterval(() => {
       updateScrollProgress();
-    }, 1000);
+    }, 200);
 
     return () => {
       if (typeof window !== "undefined") {
@@ -119,115 +107,212 @@ export function TVScrollbarController({
       if (el) {
         el.removeEventListener("scroll", handleScroll);
       }
-      if (observer && targetEl) {
-        observer.unobserve(targetEl);
+      if (observer && el) {
+        observer.unobserve(el);
       }
-      clearInterval(timer);
+      clearInterval(interval);
     };
   }, [targetId]);
 
-  // Main scroll action function
+  // Capture TV Remote Navigation Keys (Arrows + Page Controls)
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is inside a form control or screen/media name editor
+      const active = document.activeElement;
+      if (active) {
+        const tag = active.tagName.toLowerCase();
+        if (tag === "input" || tag === "textarea" || active.getAttribute("contenteditable") === "true") {
+          return;
+        }
+      }
+
+      const key = e.key;
+      const keyCode = e.keyCode;
+
+      // Handle ArrowDown (40), ArrowUp (38), PageDown (34), PageUp (33)
+      if (key === "ArrowDown" || keyCode === 40) {
+        // Safe programmatic scroll down
+        scrollByAmount(60, false);
+      } else if (key === "ArrowUp" || keyCode === 38) {
+        // Safe programmatic scroll up
+        scrollByAmount(-60, false);
+      } else if (key === "PageDown" || keyCode === 34) {
+        scrollByAmount(350, true);
+      } else if (key === "PageUp" || keyCode === 33) {
+        scrollByAmount(-350, true);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, { passive: true });
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [targetId]);
+
+  // Ultimate Universal scrollBy helper targeting EVERY layer with triple recovery strategies
   const scrollByAmount = (pxAmount: number, smooth = true) => {
-    const el = getScrollElement();
+    if (typeof document === "undefined" || typeof window === "undefined") return;
+
+    const el = document.getElementById(targetId);
+    const docEl = document.documentElement;
+    const body = document.body;
+
+    // A. Element layer
     if (el) {
-      el.scrollBy({
-        top: pxAmount,
-        behavior: smooth ? "smooth" : "auto",
-      });
-      // Fallback update
-      setTimeout(updateScrollProgress, 50);
-    } else if (typeof window !== "undefined") {
-      window.scrollBy({
-        top: pxAmount,
-        behavior: smooth ? "smooth" : "auto",
-      });
-      // Alternate backups for older smart TVs / Amazon Silk rendering engines
       try {
-        const docEl = document.documentElement;
-        if (docEl) {
-          docEl.scrollBy({
-            top: pxAmount,
-            behavior: smooth ? "smooth" : "auto",
-          });
+        el.scrollTop += pxAmount;
+      } catch (err) {}
+      try {
+        if (typeof el.scrollBy === "function") {
+          el.scrollBy(0, pxAmount);
         }
-        const body = document.body;
-        if (body) {
-          body.scrollBy({
-            top: pxAmount,
-            behavior: smooth ? "smooth" : "auto",
-          });
+      } catch (err) {}
+      try {
+        if (typeof el.scrollBy === "function") {
+          el.scrollBy({ top: pxAmount, behavior: smooth ? "smooth" : "auto" });
         }
-      } catch (err) {
-        // Safe catch
-      }
-      setTimeout(updateScrollProgress, 50);
+      } catch (err) {}
     }
+
+    // B. Viewport/Document/Body layers
+    try {
+      window.scrollBy(0, pxAmount);
+    } catch (err) {}
+    try {
+      window.scrollBy({ top: pxAmount, behavior: smooth ? "smooth" : "auto" });
+    } catch (err) {}
+
+    try {
+      if (docEl) {
+        docEl.scrollTop += pxAmount;
+        if (typeof docEl.scrollBy === "function") {
+          docEl.scrollBy(0, pxAmount);
+        }
+      }
+    } catch (err) {}
+
+    try {
+      if (body) {
+        body.scrollTop += pxAmount;
+        if (typeof body.scrollBy === "function") {
+          body.scrollBy(0, pxAmount);
+        }
+      }
+    } catch (err) {}
+
+    // Force an immediate UI status repaint
+    updateScrollProgress();
   };
 
-  // Absolute scroll action function (0 = top, 1 = bottom)
+  // Ultimate Universal scrollTo helper targeting EVERY layer with triple recovery strategies
   const scrollToPercent = (percent: number) => {
-    const el = getScrollElement();
+    if (typeof document === "undefined" || typeof window === "undefined") return;
+
+    const el = document.getElementById(targetId);
+    const docEl = document.documentElement;
+    const body = document.body;
+
+    // Calculate percent position for element and viewport
+    const { maxScroll } = getScrollMetrics();
+
+    // A. Element target calculation
     if (el) {
-      const targetTop = (percent / 100) * (el.scrollHeight - el.clientHeight);
-      el.scrollTo({
-        top: targetTop,
-        behavior: "smooth",
-      });
-    } else if (typeof window !== "undefined") {
-      const docEl = document.documentElement;
-      const body = document.body;
-      const bodyScrollHeight = body ? body.scrollHeight : 0;
-      const docScrollHeight = Math.max(docEl.scrollHeight, bodyScrollHeight);
-      const targetTop = (percent / 100) * (docScrollHeight - window.innerHeight);
-      
-      window.scrollTo({
-        top: targetTop,
-        behavior: "smooth",
-      });
+      const elMax = el.scrollHeight - el.clientHeight;
+      const targetTop = (percent / 100) * elMax;
       try {
-        if (docEl) {
-          docEl.scrollTo({
-            top: targetTop,
-            behavior: "smooth",
-          });
+        el.scrollTop = targetTop;
+      } catch (err) {}
+      try {
+        if (typeof el.scrollTo === "function") {
+          el.scrollTo(0, targetTop);
         }
-        if (body) {
-          body.scrollTo({
-            top: targetTop,
-            behavior: "smooth",
-          });
+      } catch (err) {}
+      try {
+        if (typeof el.scrollTo === "function") {
+          el.scrollTo({ top: targetTop, behavior: "smooth" });
         }
-      } catch (err) {
-        // Safe catch
-      }
+      } catch (err) {}
     }
+
+    // B. Viewport target calculation
+    const bodyScrollHeight = body ? body.scrollHeight : 0;
+    const docScrollHeight = docEl ? docEl.scrollHeight : 0;
+    const totalHeight = Math.max(docScrollHeight, bodyScrollHeight, 0);
+    const clientHeight = window.innerHeight || (docEl ? docEl.clientHeight : 0) || 0;
+    const vpMax = totalHeight - clientHeight;
+    const vpTargetTop = (percent / 100) * vpMax;
+
+    try {
+      window.scrollTo(0, vpTargetTop);
+    } catch (err) {}
+    try {
+      window.scrollTo({ top: vpTargetTop, behavior: "smooth" });
+    } catch (err) {}
+
+    try {
+      if (docEl) {
+        docEl.scrollTop = vpTargetTop;
+        if (typeof docEl.scrollTo === "function") {
+          docEl.scrollTo(0, vpTargetTop);
+        }
+      }
+    } catch (err) {}
+
+    try {
+      if (body) {
+        body.scrollTop = vpTargetTop;
+        if (typeof body.scrollTo === "function") {
+          body.scrollTo(0, vpTargetTop);
+        }
+      }
+    } catch (err) {}
+
+    // Force an immediate UI status repaint
+    updateScrollProgress();
   };
 
-  // Continuous holding handle
+  // Continuous hold logic for remote click-and-hold actions
   const startContinuousScroll = (direction: "up" | "down") => {
-    // Clear any existing active timer
     if (holdIntervalRef.current) {
       clearInterval(holdIntervalRef.current);
     }
 
-    const speed = direction === "up" ? -40 : 40;
-    // Initial single scroll fast-tap feedback
-    scrollByAmount(speed * 2, false);
+    if (direction === "up") {
+      setIsHoldingUp(true);
+    } else {
+      setIsHoldingDown(true);
+    }
 
+    const speed = direction === "up" ? -35 : 35;
+    scrollByAmount(speed * 1.5, false);
+
+    const startTime = Date.now();
     holdIntervalRef.current = setInterval(() => {
-      // In Amazon Silk we want immediate responsiveness during scroll holding
+      // Safety auto-stop limit after 2.5 seconds to prevent runaway scrolling on bugged TV browsers
+      if (Date.now() - startTime > 2500) {
+        setIsHoldingUp(false);
+        setIsHoldingDown(false);
+        if (holdIntervalRef.current) {
+          clearInterval(holdIntervalRef.current);
+          holdIntervalRef.current = null;
+        }
+        return;
+      }
       scrollByAmount(speed, false);
-    }, 50);
+    }, 40);
   };
 
   const stopContinuousScroll = () => {
+    setIsHoldingUp(false);
+    setIsHoldingDown(false);
     if (holdIntervalRef.current) {
       clearInterval(holdIntervalRef.current);
       holdIntervalRef.current = null;
     }
   };
 
-  // Cleanup timers on unmount
   useEffect(() => {
     return () => {
       if (holdIntervalRef.current) {
@@ -236,59 +321,114 @@ export function TVScrollbarController({
     };
   }, []);
 
-  // Handle click directly on custom visual track to jump to area
+  // Jump to specific track vertical coordinate
   const handleTrackClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
+    if (!trackRef.current) return;
+    const rect = trackRef.current.getBoundingClientRect();
     const clickY = e.clientY - rect.top;
     const percentage = Math.max(0, Math.min(100, (clickY / rect.height) * 100));
     scrollToPercent(percentage);
   };
 
+  // Drag handles for mouse/touch-drag interactions on the scroll feedback handle
+  const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
+    setIsDragging(true);
+    // Prevent default screen panning on mobile while dragging scroll
+    if (e.cancelable) {
+      e.preventDefault();
+    }
+    handleDragMove(e);
+  };
+
+  const handleDragMove = (e: any) => {
+    if (!trackRef.current) return;
+    const rect = trackRef.current.getBoundingClientRect();
+    let clientY = 0;
+    if (e.touches && e.touches[0]) {
+      clientY = e.touches[0].clientY;
+    } else if (e.clientY !== undefined) {
+      clientY = e.clientY;
+    } else {
+      return;
+    }
+    const relativeY = clientY - rect.top;
+    const pct = Math.max(0, Math.min(100, (relativeY / rect.height) * 100));
+    scrollToPercent(pct);
+  };
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleGlobalMove = (e: MouseEvent | TouchEvent) => {
+      handleDragMove(e);
+    };
+
+    const handleGlobalUp = () => {
+      setIsDragging(false);
+    };
+
+    window.addEventListener("mousemove", handleGlobalMove, { passive: true });
+    window.addEventListener("mouseup", handleGlobalUp, { passive: true });
+    window.addEventListener("touchmove", handleGlobalMove, { passive: false });
+    window.addEventListener("touchend", handleGlobalUp, { passive: true });
+
+    return () => {
+      window.removeEventListener("mousemove", handleGlobalMove);
+      window.removeEventListener("mouseup", handleGlobalUp);
+      window.removeEventListener("touchmove", handleGlobalMove);
+      window.removeEventListener("touchend", handleGlobalUp);
+    };
+  }, [isDragging]);
+
   return (
     <div 
       id="tv-scrollbar-interactive-controller"
-      className="fixed right-3 top-1/2 -translate-y-1/2 z-50 flex items-center gap-2 select-none pointer-events-none"
+      className="fixed right-3 md:right-5 top-1/2 -translate-y-1/2 z-[99] flex items-center gap-2 select-none"
     >
-      {/* Dynamic collapsing indicator */}
+      {/* Mini Toggle / Restore button when collapsed */}
       {!isVisible && (
         <button
-          onClick={() => setIsVisible(true)}
-          className="pointer-events-auto flex items-center justify-center w-12 h-12 bg-slate-950/90 hover:bg-indigo-700 text-indigo-400 hover:text-white border border-slate-800 rounded-full shadow-2xl transition hover:scale-110 cursor-pointer"
-          title="Exibir Rolagem"
+          onClick={() => {
+            setIsVisible(true);
+            // Flash update on maximize
+            setTimeout(updateScrollProgress, 100);
+          }}
+          className="flex items-center justify-center w-12 h-12 bg-indigo-650 hover:bg-indigo-700 active:scale-95 text-white border-2 border-indigo-500 rounded-full shadow-2xl transition hover:scale-110 cursor-pointer"
+          title="Exibir Painel de Rolagem da TV"
         >
           <Sliders className="w-5 h-5 animate-pulse" />
         </button>
       )}
 
-      {/* Main Bar Navigation Container */}
+      {/* Primary Scroll Panel Container */}
       {isVisible && (
-        <div className="pointer-events-auto flex flex-col items-center justify-between w-18 md:w-20 bg-slate-950/95 border border-slate-850 p-2.5 rounded-3xl shadow-2xl backdrop-blur-lg">
+        <div className="flex flex-col items-center justify-between w-18 md:w-22 bg-slate-950/95 border-2 border-slate-800 p-2.5 rounded-3xl shadow-2xl backdrop-blur-md">
           
-          {/* Header Title / Hide Button */}
-          <div className="w-full flex flex-col items-center gap-1 border-b border-slate-800 pb-2 mb-2 text-center">
-            <span className="text-[8px] font-bold text-indigo-400 uppercase tracking-widest font-mono">
+          {/* Header Title & Minimizer */}
+          <div className="w-full flex flex-col items-center gap-0.5 border-b border-slate-900 pb-2 mb-2 text-center">
+            <span className="text-[9px] font-extrabold text-indigo-400 uppercase tracking-widest font-mono">
               Rolagem
             </span>
             <button
               onClick={() => setIsVisible(false)}
-              className="text-slate-500 hover:text-white p-1 hover:bg-slate-900 rounded-lg transition"
-              title="Ocultar painel de rolagem"
+              className="text-slate-500 hover:text-red-400 p-1 hover:bg-slate-900 rounded-lg transition"
+              title="Ocultar Painel"
             >
-              <EyeOff className="w-3.5 h-3.5" />
+              <EyeOff className="w-4 h-4" />
             </button>
           </div>
 
-          {/* BUTTON: HOME / TOP JUMP */}
+          {/* BTN: TOP SPEED */}
           <button
             onClick={() => scrollToPercent(0)}
-            className="w-12 h-10 flex flex-col items-center justify-center bg-slate-900/80 hover:bg-indigo-950 text-slate-300 hover:text-indigo-300 border border-slate-800 rounded-xl transition cursor-pointer mb-2 active:bg-indigo-900 active:scale-95"
-            title="Ir para o Topo"
+            className="w-12 h-11 flex flex-col items-center justify-center bg-slate-900/90 hover:bg-indigo-950 text-slate-300 hover:text-indigo-400 border border-slate-850 rounded-xl transition cursor-pointer mb-2.5 active:bg-indigo-900 active:scale-95 shadow-sm"
+            title="Ir para o Início"
           >
-            <ChevronsUp className="w-4 h-4" />
-            <span className="text-[7px] font-mono font-medium tracking-tight mt-0.5 uppercase">Topo</span>
+            <ChevronsUp className="w-4 h-4 text-indigo-400" />
+            <span className="text-[7.5px] font-mono font-bold tracking-tight mt-0.5 uppercase">Topo</span>
           </button>
 
-          {/* BUTTON: STEP SCROLL UP */}
+          {/* BTN: STEP SCROLL UP */}
           <button
             onMouseDown={() => startContinuousScroll("up")}
             onMouseUp={stopContinuousScroll}
@@ -296,35 +436,44 @@ export function TVScrollbarController({
             onTouchStart={() => startContinuousScroll("up")}
             onTouchEnd={stopContinuousScroll}
             onClick={() => scrollByAmount(-180, true)}
-            className="w-14 h-14 flex flex-col items-center justify-center bg-slate-900/90 hover:bg-indigo-600 text-white rounded-xl border border-slate-800 hover:border-indigo-500 transition hover:scale-105 active:scale-95 shadow-md flex-shrink-0 cursor-pointer"
-            title="Subir Página (Segure para rolagem contínua)"
+            className={`w-14 h-14 flex flex-col items-center justify-center rounded-xl border transition shadow-md cursor-pointer ${
+              isHoldingUp 
+                ? "bg-indigo-650 border-indigo-400 text-white scale-105" 
+                : "bg-slate-900 border-slate-800 hover:bg-indigo-900/80 hover:border-indigo-500 text-slate-300 hover:text-white"
+            }`}
+            title="Subir (Dica: Segure para rolar rápido)"
           >
             <ChevronUp className="w-6 h-6 text-indigo-400 hover:text-white" />
-            <span className="text-[8px] font-bold text-slate-400">SUBIR</span>
+            <span className="text-[8.5px] font-extrabold tracking-tight">SUBIR</span>
           </button>
 
-          {/* INTERACTIVE TRACK SCROLLBAR BAR */}
-          <div className="my-3 py-1 px-1.5 bg-slate-900/60 rounded-xl border border-slate-900 flex items-center justify-center flex-col w-full h-28">
+          {/* INTERACTIVE TRACK WITH CLICK & DRAG HANDLE */}
+          <div className="my-3.5 py-2 px-1.5 bg-slate-900/60 rounded-xl border border-slate-900/60 flex items-center justify-center flex-col w-full h-32">
             <div 
+              ref={trackRef}
               onClick={handleTrackClick}
-              className="relative w-3.5 h-full bg-slate-950 hover:bg-slate-900 rounded-full cursor-pointer overflow-hidden border border-slate-800 flex items-start justify-center"
-              title="Seletor de posição - Clique para saltar"
+              className="relative w-4 h-full bg-slate-950 hover:bg-slate-900 rounded-full cursor-pointer overflow-hidden border border-slate-850 flex items-start justify-center"
+              title="Clique ou arraste para rolar"
             >
-              {/* Dynamic scroll indicator handle */}
+              {/* Scroll thumb indicator */}
               <div 
-                className="absolute w-full bg-gradient-to-b from-indigo-500 to-purple-600 rounded-full transition-all duration-150"
+                onMouseDown={handleDragStart}
+                onTouchStart={handleDragStart}
+                className={`absolute w-full bg-gradient-to-b from-indigo-500 via-purple-500 to-indigo-600 rounded-full transition-all duration-75 cursor-ns-resize shadow-md ${
+                  isDragging ? "brightness-125 border border-indigo-300" : ""
+                }`}
                 style={{ 
-                  height: "20%", 
-                  top: `${Math.max(0, Math.min(80, scrollProgress * 0.8))}%` 
+                  height: "22%", 
+                  top: `${Math.max(0, Math.min(78, scrollProgress * 0.78))}%` 
                 }}
               />
             </div>
-            <span className="text-[7.5px] font-mono text-slate-500 mt-1.5 font-bold">
+            <span className="text-[8px] font-mono text-slate-400 mt-2 font-bold bg-slate-950/80 px-1 py-0.2 rounded">
               {Math.round(scrollProgress)}%
             </span>
           </div>
 
-          {/* BUTTON: STEP SCROLL DOWN */}
+          {/* BTN: STEP SCROLL DOWN */}
           <button
             onMouseDown={() => startContinuousScroll("down")}
             onMouseUp={stopContinuousScroll}
@@ -332,27 +481,31 @@ export function TVScrollbarController({
             onTouchStart={() => startContinuousScroll("down")}
             onTouchEnd={stopContinuousScroll}
             onClick={() => scrollByAmount(180, true)}
-            className="w-14 h-14 flex flex-col items-center justify-center bg-slate-900/90 hover:bg-indigo-600 text-white rounded-xl border border-slate-800 hover:border-indigo-500 transition hover:scale-105 active:scale-95 shadow-md flex-shrink-0 cursor-pointer"
-            title="Descer Página (Segure para rolagem contínua)"
+            className={`w-14 h-14 flex flex-col items-center justify-center rounded-xl border transition shadow-md cursor-pointer ${
+              isHoldingDown 
+                ? "bg-indigo-650 border-indigo-400 text-white scale-105" 
+                : "bg-slate-900 border-slate-800 hover:bg-indigo-900/80 hover:border-indigo-500 text-slate-300 hover:text-white"
+            }`}
+            title="Descer (Dica: Segure para rolar rápido)"
           >
-            <span className="text-[8px] font-bold text-slate-400">DESCER</span>
+            <span className="text-[8.5px] font-extrabold tracking-tight">DESCER</span>
             <ChevronDown className="w-6 h-6 text-indigo-400 hover:text-white" />
           </button>
 
-          {/* BUTTON: END / BOTTOM JUMP */}
+          {/* BTN: BOTTOM SPEED */}
           <button
             onClick={() => scrollToPercent(100)}
-            className="w-12 h-10 flex flex-col items-center justify-center bg-slate-900/80 hover:bg-indigo-950 text-slate-300 hover:text-indigo-300 border border-slate-800 rounded-xl transition cursor-pointer mt-2 active:bg-indigo-900 active:scale-95"
+            className="w-12 h-11 flex flex-col items-center justify-center bg-slate-900/90 hover:bg-indigo-950 text-slate-300 hover:text-indigo-400 border border-slate-850 rounded-xl transition cursor-pointer mt-2.5 active:bg-indigo-900 active:scale-95 shadow-sm"
             title="Ir para o Final"
           >
-            <span className="text-[7px] font-mono font-medium tracking-tight mb-0.5 uppercase">Fim</span>
-            <ChevronsDown className="w-4 h-4" />
+            <span className="text-[7.5px] font-mono font-bold tracking-tight mb-0.5 uppercase">Fim</span>
+            <ChevronsDown className="w-4 h-4 text-indigo-400" />
           </button>
 
-          {/* HELP INFO ICON DESCRIPTOR FOR SMART TV CONTROLS */}
-          <div className="w-full flex flex-col items-center mt-2.5 pt-2 border-t border-slate-850 text-center">
-            <MousePointer className="w-3.5 h-3.5 text-slate-500 hover:text-indigo-400 transition" />
-            <span className="text-[6.5px] font-mono text-slate-400 mt-1 uppercase leading-none tracking-tight">
+          {/* HELP COMPATIBILITY STAMP */}
+          <div className="w-full flex flex-col items-center mt-3 pt-2 border-t border-slate-900 text-center">
+            <MousePointer className="w-4 h-4 text-slate-500" />
+            <span className="text-[6.5px] font-bold font-mono text-slate-500 mt-1 uppercase leading-none tracking-tight">
               Tv-Cursor<br/>Compatível
             </span>
           </div>

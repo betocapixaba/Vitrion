@@ -1285,7 +1285,7 @@ export default function ClientPortal({
   };
 
   return (
-    <div id="client-portal-scroll-container" className="min-h-screen w-full bg-slate-900 font-sans text-slate-300 overflow-y-auto pb-16">
+    <div id="client-portal-scroll-container" className="h-screen w-full bg-slate-900 font-sans text-slate-300 overflow-y-auto pb-16">
       {/* Active Impersonation Bar */}
       {hasActiveAdmin() && (
         <div className="bg-gradient-to-r from-amber-600 to-amber-700 text-white px-6 py-2.5 text-xs flex items-center justify-between shadow-inner select-none font-medium border-b border-amber-850">
