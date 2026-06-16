@@ -53,7 +53,7 @@ export default function App() {
   const [showSplash, setShowSplash] = useState(() => {
     if (typeof window !== 'undefined') {
       const p = new URLSearchParams(window.location.search);
-      if (p.get('mode') === 'player' || p.get('player') === 'true') {
+      if (p.get('mode') === 'player' || p.get('player') === 'true' || p.get('embedded') === 'true') {
         return false;
       }
     }
@@ -118,6 +118,13 @@ export default function App() {
       setShowSplash(false);
       return;
     }
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get('embedded') === 'true') {
+        setShowSplash(false);
+        return;
+      }
+    }
     const timer = setTimeout(() => {
       setShowSplash(false);
     }, 3000);
@@ -127,6 +134,28 @@ export default function App() {
   // Client and Unified authentication states
   const [loggedClient, setLoggedClient] = useState<Client | null>(() => {
     if (typeof window !== 'undefined') {
+      // 1. If we are in an iframe (embedded), copy from parent window immediately to preserve full session state
+      try {
+        if (window.parent && window.parent !== window && (window.parent as any).__vitrion_logged_client) {
+          return (window.parent as any).__vitrion_logged_client;
+        }
+      } catch (parentErr) {
+        console.warn('Could not read loggedClient from parent window:', parentErr);
+      }
+
+      // 2. Second choice: URL search parameter
+      let urlClientId: string | null = null;
+      try {
+        const p = new URLSearchParams(window.location.search);
+        urlClientId = p.get('clientId');
+      } catch (e) {
+        console.warn('Could not read Search Params:', e);
+      }
+      if (urlClientId) {
+        return { id: urlClientId } as any;
+      }
+
+      // 3. Third choice: localStorage
       try {
         const saved = localStorage.getItem('vitrion_logged_client');
         return saved ? JSON.parse(saved) : null;
@@ -137,6 +166,66 @@ export default function App() {
     }
     return null;
   });
+
+  // Keep loggedClient data dynamically synchronized with Firestore in real-time
+  useEffect(() => {
+    if (!loggedClient?.id) return;
+
+    // Use full snapshot listener so any updates to name, limit, playlist or client info instantly reflect
+    const unsubscribe = onSnapshot(
+      doc(db, 'clients', loggedClient.id),
+      (snap) => {
+        if (snap.exists()) {
+          setLoggedClient({ id: snap.id, ...snap.data() } as Client);
+        }
+      },
+      (err) => {
+        console.warn('Could not subscribe or hydrate loggedClient from Firestore:', err);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [loggedClient?.id]);
+
+  // Handle same-origin iframe real-time synchronization between the main window and computer simulator
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    // A. Parent window context: expose states on window for child frames to consume
+    if (window.parent === window) {
+      (window as any).__vitrion_logged_client = loggedClient;
+      (window as any).__vitrion_active_admin = user;
+      return;
+    }
+
+    // B. Embedded iframe context: poll and pull current state from parent window
+    const syncFromParent = () => {
+      try {
+        const parentWin = window.parent;
+        if (!parentWin) return;
+
+        const parentClient = (parentWin as any).__vitrion_logged_client;
+        if (parentClient && JSON.stringify(parentClient) !== JSON.stringify(loggedClient)) {
+          setLoggedClient(parentClient);
+        } else if (!parentClient && loggedClient) {
+          setLoggedClient(null);
+        }
+
+        const parentAdmin = (parentWin as any).__vitrion_active_admin;
+        if (parentAdmin && JSON.stringify(parentAdmin) !== JSON.stringify(user)) {
+          setUser(parentAdmin);
+        } else if (!parentAdmin && user) {
+          setUser(null);
+        }
+      } catch (e) {
+        console.warn('Could not sync App state from parent window:', e);
+      }
+    };
+
+    syncFromParent();
+    const interval = setInterval(syncFromParent, 400);
+    return () => clearInterval(interval);
+  }, [loggedClient, user]);
 
   const [loginTab, setLoginTab] = useState<'client' | 'admin' | 'pair'>('client');
   const [pairingCodeParam, setPairingCodeParam] = useState('');
@@ -239,11 +328,15 @@ export default function App() {
          try {
            await signInWithEmailAndPassword(auth, 'betocapixaba@gmail.com', 'Vi9212376!@');
            if (typeof window !== 'undefined') {
-              localStorage.setItem('vitrion_active_admin', JSON.stringify({
-                uid: 'vitrion-sandbox-admin',
-                email: 'betocapixaba@gmail.com',
-                displayName: 'Beto (Administrador)'
-              }));
+              try {
+                localStorage.setItem('vitrion_active_admin', JSON.stringify({
+                  uid: 'vitrion-sandbox-admin',
+                  email: 'betocapixaba@gmail.com',
+                  displayName: 'Beto (Administrador)'
+                }));
+              } catch (localErr) {
+                console.warn('Blocked writing active admin to localStorage:', localErr);
+              }
             }
             setAdminAuthSuccess('Autenticação de administrador realizada com sucesso!');
             await logAdminAction('LOGIN_SUCCESS', 'Beto (Administrador)', 'Administrador mestre iniciou sessão no painel.');
@@ -312,7 +405,11 @@ export default function App() {
             };
 
             if (typeof window !== 'undefined') {
-              localStorage.setItem('vitrion_active_admin', JSON.stringify(activeAdminObj));
+              try {
+                localStorage.setItem('vitrion_active_admin', JSON.stringify(activeAdminObj));
+              } catch (localErr) {
+                console.warn('Blocked writing active Admin info to localStorage:', localErr);
+              }
             }
 
             setUser({
@@ -368,7 +465,11 @@ export default function App() {
       setIsSandboxAdmin(false);
       setUser(null);
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('vitrion_active_admin');
+        try {
+          localStorage.removeItem('vitrion_active_admin');
+        } catch (localErr) {
+          console.warn('Blocked on removing active admin from localStorage:', localErr);
+        }
       }
       await signOut(auth);
       setAppMode('admin');
@@ -380,7 +481,11 @@ export default function App() {
   // Client logout handler
   const handleClientLogout = async () => {
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('vitrion_logged_client');
+      try {
+        localStorage.removeItem('vitrion_logged_client');
+      } catch (localErr) {
+        console.warn('Blocked removing client session from localStorage:', localErr);
+      }
     }
     const hadAdmin = !!user;
     setLoggedClient(null);
@@ -397,7 +502,11 @@ export default function App() {
   // Admin impersonating/controlling client handler
   const handleImpersonateClient = (client: Client) => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('vitrion_logged_client', JSON.stringify(client));
+      try {
+        localStorage.setItem('vitrion_logged_client', JSON.stringify(client));
+      } catch (localErr) {
+        console.warn('Blocked writing client impersonation session to localStorage:', localErr);
+      }
     }
     setLoggedClient(client);
   };
@@ -409,26 +518,58 @@ export default function App() {
     setClientLoggingIn(true);
 
     try {
-      // Query Firestore clients collection directly for matches on username
-      const q = query(
-        collection(db, 'clients'),
-        where('username', '==', clientUsername.trim())
-      );
-      const querySnap = await getDocs(q);
+      const inputUsername = clientUsername.trim();
+      const inputUsernameLower = inputUsername.toLowerCase();
 
+      // 1. First try precise query of username
+      let querySnap = await getDocs(query(
+        collection(db, 'clients'),
+        where('username', '==', inputUsername)
+      ));
+
+      // 2. Fallback: try lowercase matching in Firestore
       if (querySnap.empty) {
+        querySnap = await getDocs(query(
+          collection(db, 'clients'),
+          where('username', '==', inputUsernameLower)
+        ));
+      }
+
+      let userExists = !querySnap.empty;
+      let matchedClient: Client | null = null;
+
+      if (userExists) {
+        querySnap.forEach((docSnap) => {
+          const data = docSnap.data() as Client;
+          if (data.password === clientPassword) {
+            matchedClient = { id: docSnap.id, ...data };
+          }
+        });
+      } else {
+        // 3. Ultimate Fallback: scan all registered client usernames case-insensitively
+        const allClientsSnap = await getDocs(collection(db, 'clients'));
+        let foundDoc: any = null;
+        allClientsSnap.forEach((docSnap) => {
+          const u = (docSnap.data().username || '').trim().toLowerCase();
+          if (u === inputUsernameLower) {
+            foundDoc = docSnap;
+          }
+        });
+
+        if (foundDoc) {
+          userExists = true;
+          const data = foundDoc.data() as Client;
+          if (data.password === clientPassword) {
+            matchedClient = { id: foundDoc.id, ...data };
+          }
+        }
+      }
+
+      if (!userExists) {
         setClientLoginError('Usuário não cadastrado nesta rede. Contate seu administrador.');
         setClientLoggingIn(false);
         return;
       }
-
-      let matchedClient: Client | null = null;
-      querySnap.forEach((docSnap) => {
-        const data = docSnap.data() as Client;
-        if (data.password === clientPassword) {
-          matchedClient = { id: docSnap.id, ...data };
-        }
-      });
 
       if (!matchedClient) {
         setClientLoginError('Senha de acesso incorreta para este estabelecimento.');
@@ -438,7 +579,11 @@ export default function App() {
 
       // Save to state and localStorage
       if (typeof window !== 'undefined') {
-        localStorage.setItem('vitrion_logged_client', JSON.stringify(matchedClient));
+        try {
+          localStorage.setItem('vitrion_logged_client', JSON.stringify(matchedClient));
+        } catch (localErr) {
+          console.warn('Blocked on writing logged client to localStorage:', localErr);
+        }
       }
       setLoggedClient(matchedClient);
       setClientLoggingIn(false);
@@ -478,7 +623,11 @@ export default function App() {
       if (pairingAction === 'mirror') {
         // Option A: Just mirror screen in this browser right now!
         if (typeof window !== 'undefined') {
-          localStorage.setItem('op_player_screen_id', code);
+          try {
+            localStorage.setItem('op_player_screen_id', code);
+          } catch (localErr) {
+            console.warn('Blocked on writing screen ID to localStorage:', localErr);
+          }
           // Also write to permanent cookie so smart TVs/Amazon Silk retain it securely
           try {
             const date = new Date();
@@ -521,28 +670,59 @@ export default function App() {
           setPairIsSubmitting(false);
           return;
         }
-        
-        // Find matched client store
-        const q = query(
+
+        const inputPairUser = pairClientUser.trim();
+        const inputPairUserLower = inputPairUser.toLowerCase();
+
+        // Find matched client store with case tolerance and fallback
+        let querySnap = await getDocs(query(
           collection(db, 'clients'),
-          where('username', '==', pairClientUser.trim())
-        );
-        const querySnap = await getDocs(q);
-        
+          where('username', '==', inputPairUser)
+        ));
+
         if (querySnap.empty) {
+          querySnap = await getDocs(query(
+            collection(db, 'clients'),
+            where('username', '==', inputPairUserLower)
+          ));
+        }
+
+        let userExists = !querySnap.empty;
+        let targetClient: Client | null = null;
+
+        if (userExists) {
+          querySnap.forEach((docSnap) => {
+            const data = docSnap.data() as Client;
+            if (data.password === pairClientPass) {
+              targetClient = { id: docSnap.id, ...data };
+            }
+          });
+        } else {
+          // Ultimate fallback
+          const allClientsSnap = await getDocs(collection(db, 'clients'));
+          let foundDoc: any = null;
+          allClientsSnap.forEach((docSnap) => {
+            const u = (docSnap.data().username || '').trim().toLowerCase();
+            if (u === inputPairUserLower) {
+              foundDoc = docSnap;
+            }
+          });
+
+          if (foundDoc) {
+            userExists = true;
+            const data = foundDoc.data() as Client;
+            if (data.password === pairClientPass) {
+              targetClient = { id: foundDoc.id, ...data };
+            }
+          }
+        }
+
+        if (!userExists) {
           setPairError('Estabelecimento não encontrado com este usuário.');
           setPairIsSubmitting(false);
           return;
         }
-        
-        let targetClient: Client | null = null;
-        querySnap.forEach((docSnap) => {
-          const data = docSnap.data() as Client;
-          if (data.password === pairClientPass) {
-            targetClient = { id: docSnap.id, ...data };
-          }
-        });
-        
+
         if (!targetClient) {
           setPairError('Senha incorreta para o estabelecimento selecionado.');
           setPairIsSubmitting(false);
@@ -563,7 +743,11 @@ export default function App() {
         
         // Log them into ClientPortal automatically for convenience!
         if (typeof window !== 'undefined') {
-          localStorage.setItem('vitrion_logged_client', JSON.stringify(targetClient));
+          try {
+            localStorage.setItem('vitrion_logged_client', JSON.stringify(targetClient));
+          } catch (localErr) {
+            console.warn('Blocked writing auto-log client session to localStorage:', localErr);
+          }
         }
         
         setTimeout(() => {

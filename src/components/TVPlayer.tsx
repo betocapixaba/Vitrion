@@ -30,34 +30,44 @@ function initDB(): Promise<any> {
       reject();
       return;
     }
-    const request = indexedDB.open('VitrionTVStorage', 1);
-    request.onupgradeneeded = (e: any) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains('settings')) {
-        db.createObjectStore('settings');
-      }
-    };
-    request.onsuccess = (e: any) => {
-      resolve(e.target.result);
-    };
-    request.onerror = () => {
-      reject();
-    };
+    try {
+      const request = indexedDB.open('VitrionTVStorage', 1);
+      request.onupgradeneeded = (e: any) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('settings')) {
+          db.createObjectStore('settings');
+        }
+      };
+      request.onsuccess = (e: any) => {
+        resolve(e.target.result);
+      };
+      request.onerror = () => {
+        reject();
+      };
+    } catch (err) {
+      console.warn("IndexedDB access failed or was blocked by browser:", err);
+      reject(err);
+    }
   });
 }
 
 function getIndexedDBValue(key: string): Promise<string | null> {
   return initDB().then(db => {
     return new Promise<string | null>((resolve) => {
-      const transaction = db.transaction('settings', 'readonly');
-      const store = transaction.objectStore('settings');
-      const request = store.get(key);
-      request.onsuccess = () => {
-        resolve(request.result || null);
-      };
-      request.onerror = () => {
+      try {
+        const transaction = db.transaction('settings', 'readonly');
+        const store = transaction.objectStore('settings');
+        const request = store.get(key);
+        request.onsuccess = () => {
+          resolve(request.result || null);
+        };
+        request.onerror = () => {
+          resolve(null);
+        };
+      } catch (err) {
+        console.warn("IndexedDB transaction (readonly) failed:", err);
         resolve(null);
-      };
+      }
     });
   }).catch(() => null);
 }
@@ -65,11 +75,16 @@ function getIndexedDBValue(key: string): Promise<string | null> {
 function setIndexedDBValue(key: string, value: string): Promise<void> {
   return initDB().then(db => {
     return new Promise<void>((resolve) => {
-      const transaction = db.transaction('settings', 'readwrite');
-      const store = transaction.objectStore('settings');
-      const request = store.put(value, key);
-      request.onsuccess = () => resolve();
-      request.onerror = () => resolve();
+      try {
+        const transaction = db.transaction('settings', 'readwrite');
+        const store = transaction.objectStore('settings');
+        const request = store.put(value, key);
+        request.onsuccess = () => resolve();
+        request.onerror = () => resolve();
+      } catch (err) {
+        console.warn("IndexedDB transaction (readwrite) failed:", err);
+        resolve();
+      }
     });
   }).catch(() => {});
 }
@@ -77,11 +92,16 @@ function setIndexedDBValue(key: string, value: string): Promise<void> {
 function deleteIndexedDBValue(key: string): Promise<void> {
   return initDB().then(db => {
     return new Promise<void>((resolve) => {
-      const transaction = db.transaction('settings', 'readwrite');
-      const store = transaction.objectStore('settings');
-      const request = store.delete(key);
-      request.onsuccess = () => resolve();
-      request.onerror = () => resolve();
+      try {
+        const transaction = db.transaction('settings', 'readwrite');
+        const store = transaction.objectStore('settings');
+        const request = store.delete(key);
+        request.onsuccess = () => resolve();
+        request.onerror = () => resolve();
+      } catch (err) {
+        console.warn("IndexedDB transaction (delete) failed:", err);
+        resolve();
+      }
     });
   }).catch(() => {});
 }
@@ -516,8 +536,43 @@ export default function TVPlayer() {
         setScreenDoc(sc);
       },
       (err) => {
-        console.error("Erro no onSnapshot do player:", err);
-        setErrorMessage("Falha de conexão em tempo real com o servidor de TV.");
+        console.warn("Real-time onSnapshot failed, falling back to polling getDoc mechanism:", err);
+        
+        // Setup polling fallback to retrieve screen updates using standard HTTP GET requests
+        const pollInterval = setInterval(async () => {
+          try {
+            const snap = await getDoc(ref);
+            if (snap.exists()) {
+              const data = snap.data();
+              const sc: Screen = {
+                id: snap.id,
+                name: data.name || 'Smart TV',
+                pairingCode: data.pairingCode || '',
+                status: data.status || 'online',
+                lastActive: data.lastActive,
+                contentType: data.contentType || 'idle',
+                contentId: data.contentId || '',
+                pairedAt: data.pairedAt,
+                ownerId: data.ownerId || '',
+                createdAt: data.createdAt,
+                updatedAt: data.updatedAt,
+                schedule: data.schedule,
+              };
+              setScreenDoc(sc);
+            }
+          } catch (pollErr) {
+            console.error("Polling fallback also failed:", pollErr);
+          }
+        }, 5000);
+
+        // Only block and show error UI if we are in a top-level window (not inside an iframe / simulator)
+        const isIframe = typeof window !== 'undefined' && window.self !== window.top;
+        if (!isIframe) {
+          setErrorMessage("Falha de conexão em tempo real com o servidor de TV.");
+        }
+
+        // Return a cleanup wrapper that clears the interval
+        return () => clearInterval(pollInterval);
       }
     );
 
@@ -554,6 +609,8 @@ export default function TVPlayer() {
             ...d
           });
         }
+      }, (err) => {
+        console.warn("Erro ao ler mídia em tempo real:", err);
       });
       return () => unsubAsset();
     }
@@ -577,6 +634,8 @@ export default function TVPlayer() {
             return newItems;
           });
         }
+      }, (err) => {
+        console.warn("Erro ao ler playlist em tempo real:", err);
       });
       return () => unsubPlaylist();
     }
