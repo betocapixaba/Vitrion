@@ -30,44 +30,34 @@ function initDB(): Promise<any> {
       reject();
       return;
     }
-    try {
-      const request = indexedDB.open('VitrionTVStorage', 1);
-      request.onupgradeneeded = (e: any) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains('settings')) {
-          db.createObjectStore('settings');
-        }
-      };
-      request.onsuccess = (e: any) => {
-        resolve(e.target.result);
-      };
-      request.onerror = () => {
-        reject();
-      };
-    } catch (err) {
-      console.warn("IndexedDB access failed or was blocked by browser:", err);
-      reject(err);
-    }
+    const request = indexedDB.open('VitrionTVStorage', 1);
+    request.onupgradeneeded = (e: any) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('settings')) {
+        db.createObjectStore('settings');
+      }
+    };
+    request.onsuccess = (e: any) => {
+      resolve(e.target.result);
+    };
+    request.onerror = () => {
+      reject();
+    };
   });
 }
 
 function getIndexedDBValue(key: string): Promise<string | null> {
   return initDB().then(db => {
     return new Promise<string | null>((resolve) => {
-      try {
-        const transaction = db.transaction('settings', 'readonly');
-        const store = transaction.objectStore('settings');
-        const request = store.get(key);
-        request.onsuccess = () => {
-          resolve(request.result || null);
-        };
-        request.onerror = () => {
-          resolve(null);
-        };
-      } catch (err) {
-        console.warn("IndexedDB transaction (readonly) failed:", err);
+      const transaction = db.transaction('settings', 'readonly');
+      const store = transaction.objectStore('settings');
+      const request = store.get(key);
+      request.onsuccess = () => {
+        resolve(request.result || null);
+      };
+      request.onerror = () => {
         resolve(null);
-      }
+      };
     });
   }).catch(() => null);
 }
@@ -75,16 +65,11 @@ function getIndexedDBValue(key: string): Promise<string | null> {
 function setIndexedDBValue(key: string, value: string): Promise<void> {
   return initDB().then(db => {
     return new Promise<void>((resolve) => {
-      try {
-        const transaction = db.transaction('settings', 'readwrite');
-        const store = transaction.objectStore('settings');
-        const request = store.put(value, key);
-        request.onsuccess = () => resolve();
-        request.onerror = () => resolve();
-      } catch (err) {
-        console.warn("IndexedDB transaction (readwrite) failed:", err);
-        resolve();
-      }
+      const transaction = db.transaction('settings', 'readwrite');
+      const store = transaction.objectStore('settings');
+      const request = store.put(value, key);
+      request.onsuccess = () => resolve();
+      request.onerror = () => resolve();
     });
   }).catch(() => {});
 }
@@ -92,16 +77,11 @@ function setIndexedDBValue(key: string, value: string): Promise<void> {
 function deleteIndexedDBValue(key: string): Promise<void> {
   return initDB().then(db => {
     return new Promise<void>((resolve) => {
-      try {
-        const transaction = db.transaction('settings', 'readwrite');
-        const store = transaction.objectStore('settings');
-        const request = store.delete(key);
-        request.onsuccess = () => resolve();
-        request.onerror = () => resolve();
-      } catch (err) {
-        console.warn("IndexedDB transaction (delete) failed:", err);
-        resolve();
-      }
+      const transaction = db.transaction('settings', 'readwrite');
+      const store = transaction.objectStore('settings');
+      const request = store.delete(key);
+      request.onsuccess = () => resolve();
+      request.onerror = () => resolve();
     });
   }).catch(() => {});
 }
@@ -182,11 +162,68 @@ function removeStoredScreenId() {
   deleteIndexedDBValue('op_player_screen_id');
 }
 
+function getBrasiliaTimeParts(): { dayIndex: number; timeStr: string } {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Sao_Paulo',
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    const parts = formatter.formatToParts(new Date());
+    let weekday = 'Sun';
+    let hour = '12';
+    let minute = '00';
+    for (const part of parts) {
+      if (part.type === 'weekday') weekday = part.value;
+      else if (part.type === 'hour') hour = part.value;
+      else if (part.type === 'minute') minute = part.value;
+    }
+    
+    if (hour === '24') hour = '00';
+    
+    const daysKeysMap: Record<string, number> = {
+      'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6,
+      'dom': 0, 'seg': 1, 'ter': 2, 'qua': 3, 'qui': 4, 'sex': 5, 'sáb': 6
+    };
+    
+    let dayIndex = daysKeysMap[weekday];
+    if (dayIndex === undefined) {
+      const lower = weekday.toLowerCase();
+      if (lower.includes('su') || lower.includes('do')) dayIndex = 0;
+      else if (lower.includes('mo') || lower.includes('se')) dayIndex = 1;
+      else if (lower.includes('tu') || lower.includes('te')) dayIndex = 2;
+      else if (lower.includes('we') || lower.includes('qa') || lower.includes('qu')) dayIndex = 3;
+      else if (lower.includes('th') || lower.includes('qi') || lower.includes('qu')) dayIndex = 4;
+      else if (lower.includes('fr') || lower.includes('se')) {
+        if (lower.includes('sex')) dayIndex = 5;
+        else dayIndex = 1;
+      }
+      else if (lower.includes('sa')) dayIndex = 6;
+      else dayIndex = new Date().getDay();
+    }
+    
+    return {
+      dayIndex,
+      timeStr: `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`
+    };
+  } catch (e) {
+    console.warn("Intl timezone formatting error:", e);
+    const now = new Date();
+    const h = now.getHours().toString().padStart(2, '0');
+    const m = now.getMinutes().toString().padStart(2, '0');
+    return {
+      dayIndex: now.getDay(),
+      timeStr: `${h}:${m}`
+    };
+  }
+}
+
 function isScheduledOff(screenDoc: any): boolean {
   if (!screenDoc || !screenDoc.schedule) return false;
   
-  const now = new Date();
-  const dayIndex = now.getDay(); // 0 is Sunday, 1 is Monday, etc.
+  const { dayIndex, timeStr: currentTimeStr } = getBrasiliaTimeParts();
   const daysKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
   const dayKey = daysKeys[dayIndex];
   
@@ -197,11 +234,6 @@ function isScheduledOff(screenDoc: any): boolean {
   
   const { startTime, endTime } = dayConfig;
   if (!startTime || !endTime) return false;
-  
-  // Convert current time to a comparable minutes format (HH:MM)
-  const currentHours = now.getHours().toString().padStart(2, '0');
-  const currentMinutes = now.getMinutes().toString().padStart(2, '0');
-  const currentTimeStr = `${currentHours}:${currentMinutes}`;
   
   if (startTime <= endTime) {
     return currentTimeStr < startTime || currentTimeStr >= endTime;
@@ -325,8 +357,17 @@ export default function TVPlayer() {
   // Real-time Clock for signage styling
   useEffect(() => {
     const tick = () => {
-      const now = new Date();
-      setRealtimeClock(now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
+      try {
+        const timeStr = new Date().toLocaleTimeString('pt-BR', {
+          timeZone: 'America/Sao_Paulo',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        setRealtimeClock(timeStr);
+      } catch (e) {
+        const now = new Date();
+        setRealtimeClock(now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
+      }
     };
     tick();
     const id = setInterval(tick, 1000);
@@ -477,7 +518,7 @@ export default function TVPlayer() {
     }
   };
 
-  // Heartbeat Loop (pulse online status to firestore every 15 seconds)
+  // Heartbeat Loop (pulse online status to firestore every 30 seconds to optimize write quota usage)
   useEffect(() => {
     if (!screenId) return;
 
@@ -495,7 +536,7 @@ export default function TVPlayer() {
     };
     sendPulse();
 
-    const intervalId = setInterval(sendPulse, 15000);
+    const intervalId = setInterval(sendPulse, 30000);
     return () => clearInterval(intervalId);
   }, [screenId]);
 
@@ -536,43 +577,8 @@ export default function TVPlayer() {
         setScreenDoc(sc);
       },
       (err) => {
-        console.warn("Real-time onSnapshot failed, falling back to polling getDoc mechanism:", err);
-        
-        // Setup polling fallback to retrieve screen updates using standard HTTP GET requests
-        const pollInterval = setInterval(async () => {
-          try {
-            const snap = await getDoc(ref);
-            if (snap.exists()) {
-              const data = snap.data();
-              const sc: Screen = {
-                id: snap.id,
-                name: data.name || 'Smart TV',
-                pairingCode: data.pairingCode || '',
-                status: data.status || 'online',
-                lastActive: data.lastActive,
-                contentType: data.contentType || 'idle',
-                contentId: data.contentId || '',
-                pairedAt: data.pairedAt,
-                ownerId: data.ownerId || '',
-                createdAt: data.createdAt,
-                updatedAt: data.updatedAt,
-                schedule: data.schedule,
-              };
-              setScreenDoc(sc);
-            }
-          } catch (pollErr) {
-            console.error("Polling fallback also failed:", pollErr);
-          }
-        }, 5000);
-
-        // Only block and show error UI if we are in a top-level window (not inside an iframe / simulator)
-        const isIframe = typeof window !== 'undefined' && window.self !== window.top;
-        if (!isIframe) {
-          setErrorMessage("Falha de conexão em tempo real com o servidor de TV.");
-        }
-
-        // Return a cleanup wrapper that clears the interval
-        return () => clearInterval(pollInterval);
+        console.error("Erro no onSnapshot do player:", err);
+        setErrorMessage("Falha de conexão em tempo real com o servidor de TV.");
       }
     );
 
@@ -609,8 +615,6 @@ export default function TVPlayer() {
             ...d
           });
         }
-      }, (err) => {
-        console.warn("Erro ao ler mídia em tempo real:", err);
       });
       return () => unsubAsset();
     }
@@ -634,8 +638,6 @@ export default function TVPlayer() {
             return newItems;
           });
         }
-      }, (err) => {
-        console.warn("Erro ao ler playlist em tempo real:", err);
       });
       return () => unsubPlaylist();
     }
@@ -696,52 +698,49 @@ export default function TVPlayer() {
     return () => window.removeEventListener('keydown', handleControlKeys);
   }, [screenId]);
 
-  // Auto-fullscreen on load, on asset shift (image/video/text), and on any first/future user interaction
+  // Auto-fullscreen on load and on any first user interaction (touch, key, click)
   useEffect(() => {
+    let attempted = false;
+
     const autoEnter = () => {
-      if (!containerRef.current) return;
-      if (!document.fullscreenElement) {
+      if (attempted) return;
+      if (!document.fullscreenElement && containerRef.current) {
         containerRef.current.requestFullscreen()
           .then(() => {
             setIsFullscreen(true);
+            attempted = true;
+            cleanup();
           })
           .catch((err) => {
-            // Log silently, as browsers block programmatic fullscreen without user gesture.
-            // On Smart TVs/Silk, a keydown or click will unblock this.
-            console.log("Auto-fullscreen postponed (waiting for interaction or Silk permission):", err);
+            console.log("Auto fullscreen request blocked or postponed till next interaction:", err);
           });
-      } else {
-        setIsFullscreen(true);
+      } else if (document.fullscreenElement) {
+        attempted = true;
+        cleanup();
       }
     };
 
-    // Call immediately (e.g., when a new image asset appears/transitions)
-    const immediateId = setTimeout(autoEnter, 100);
-    const delayedId = setTimeout(autoEnter, 1200);
+    const cleanup = () => {
+      window.removeEventListener('click', autoEnter);
+      window.removeEventListener('keydown', autoEnter);
+      window.removeEventListener('touchstart', autoEnter);
+      window.removeEventListener('mousedown', autoEnter);
+    };
 
-    // Setup fallback interval to keep striving for fullscreen (vital for TV browsers like Amazon Silk,
-    // where background state transitions or pairing activation can unlock fullscreen capabilities)
-    const intervalId = setInterval(() => {
-      if (!document.fullscreenElement && activeAsset) {
-        autoEnter();
-      }
-    }, 1500);
+    // Listen to all interaction events
+    window.addEventListener('click', autoEnter);
+    window.addEventListener('keydown', autoEnter);
+    window.addEventListener('touchstart', autoEnter);
+    window.addEventListener('mousedown', autoEnter);
 
-    // Common remote control and cursor/pointer interaction triggers
-    const triggerEvents = ["click", "keydown", "keyup", "touchstart", "mousedown", "pointerdown"];
-    triggerEvents.forEach(evt => {
-      window.addEventListener(evt, autoEnter, { passive: true });
-    });
+    // Attempt immediately (some modern smart setups allow it under specific criteria/contexts)
+    const timeoutId = setTimeout(autoEnter, 1200);
 
     return () => {
-      clearTimeout(immediateId);
-      clearTimeout(delayedId);
-      clearInterval(intervalId);
-      triggerEvents.forEach(evt => {
-        window.removeEventListener(evt, autoEnter);
-      });
+      cleanup();
+      clearTimeout(timeoutId);
     };
-  }, [screenId, activeAsset]);
+  }, [screenId]);
 
   // 1. Loading screen
   if (!screenId || !screenDoc) {
@@ -997,9 +996,30 @@ export default function TVPlayer() {
     >
       {isOffBySchedule && (
         <div 
-          className="absolute inset-0 bg-black z-50 flex items-center justify-center animate-fade-in" 
+          className="absolute inset-0 bg-slate-950/98 z-50 flex flex-col items-center justify-center p-8 text-center animate-fade-in select-none" 
           id="tv-player-schedule-black-screen"
-        />
+        >
+          <div className="space-y-5 flex flex-col items-center">
+            <span className="text-[10px] bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 px-3 py-1 rounded-full font-bold uppercase tracking-widest animate-pulse">
+              Modo Econômico Programado 🌙
+            </span>
+            <div className="text-6xl sm:text-7xl font-mono font-bold tracking-tight text-slate-800 select-none">
+              {realtimeClock}
+            </div>
+            <div className="flex flex-col items-center gap-1.5">
+              <p className="text-[11px] text-slate-500 max-w-sm uppercase tracking-wider font-semibold">
+                Fora do Horário de Transmissão
+              </p>
+              <p className="text-[9px] text-slate-600 max-w-xs leading-normal">
+                Programação suspensa via Programador Semanal. O reprodutor continuará ativo para retomar automaticamente no horário programado.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 mt-2 bg-slate-900/60 px-3.5 py-1.5 rounded-lg border border-white/5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+              <span className="text-[9.5px] font-mono text-slate-500">CONEXÃO E REPRODUTOR ATIVOS</span>
+            </div>
+          </div>
+        </div>
       )}
       {/* Absolute fullscreen media host */}
       <AnimatePresence mode="wait">

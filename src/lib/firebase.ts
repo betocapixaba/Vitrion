@@ -9,6 +9,7 @@ import firebaseConfig from '@/firebase-applet-config.json';
 const app = initializeApp(firebaseConfig);
 
 // Notice: In AI Studio, we specifically pass the firestoreDatabaseId config if specified.
+// We use initializeFirestore with experimentalForceLongPolling enabled to prevent WebChannel listen stream errors on Amazon Fire TV / Smart TVs.
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
 }, firebaseConfig.firestoreDatabaseId);

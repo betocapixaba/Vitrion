@@ -14,7 +14,6 @@ import {
 } from "firebase/firestore";
 import { db, auth } from "../lib/firebase";
 import { VitrionLogo } from "./VitrionLogo";
-import { TVScrollbarController } from "./TVScrollbarController";
 // @ts-ignore
 import vitrionLogoOficial from "../assets/images/vitrion_logo_oficial.png";
 import { Client, Screen, Asset, Playlist, PlaylistItem } from "../types";
@@ -103,11 +102,68 @@ function generateDisplayCode(): string {
   return result;
 }
 
+function getBrasiliaTimeParts(): { dayIndex: number; timeStr: string } {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Sao_Paulo',
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    const parts = formatter.formatToParts(new Date());
+    let weekday = 'Sun';
+    let hour = '12';
+    let minute = '00';
+    for (const part of parts) {
+      if (part.type === 'weekday') weekday = part.value;
+      else if (part.type === 'hour') hour = part.value;
+      else if (part.type === 'minute') minute = part.value;
+    }
+    
+    if (hour === '24') hour = '00';
+    
+    const daysKeysMap: Record<string, number> = {
+      'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6,
+      'dom': 0, 'seg': 1, 'ter': 2, 'qua': 3, 'qui': 4, 'sex': 5, 'sáb': 6
+    };
+    
+    let dayIndex = daysKeysMap[weekday];
+    if (dayIndex === undefined) {
+      const lower = weekday.toLowerCase();
+      if (lower.includes('su') || lower.includes('do')) dayIndex = 0;
+      else if (lower.includes('mo') || lower.includes('se')) dayIndex = 1;
+      else if (lower.includes('tu') || lower.includes('te')) dayIndex = 2;
+      else if (lower.includes('we') || lower.includes('qa') || lower.includes('qu')) dayIndex = 3;
+      else if (lower.includes('th') || lower.includes('qi') || lower.includes('qu')) dayIndex = 4;
+      else if (lower.includes('fr') || lower.includes('se')) {
+        if (lower.includes('sex')) dayIndex = 5;
+        else dayIndex = 1;
+      }
+      else if (lower.includes('sa')) dayIndex = 6;
+      else dayIndex = new Date().getDay();
+    }
+    
+    return {
+      dayIndex,
+      timeStr: `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`
+    };
+  } catch (e) {
+    console.warn("Intl timezone formatting error:", e);
+    const now = new Date();
+    const h = now.getHours().toString().padStart(2, '0');
+    const m = now.getMinutes().toString().padStart(2, '0');
+    return {
+      dayIndex: now.getDay(),
+      timeStr: `${h}:${m}`
+    };
+  }
+}
+
 function isScheduledOff(screenDoc: any): boolean {
   if (!screenDoc || !screenDoc.schedule) return false;
 
-  const now = new Date();
-  const dayIndex = now.getDay(); // 0 is Sunday, 1 is Monday, etc.
+  const { dayIndex, timeStr: currentTimeStr } = getBrasiliaTimeParts();
   const daysKeys = [
     "sunday",
     "monday",
@@ -126,11 +182,6 @@ function isScheduledOff(screenDoc: any): boolean {
 
   const { startTime, endTime } = dayConfig;
   if (!startTime || !endTime) return false;
-
-  // Convert current time to a comparable minutes format (HH:MM)
-  const currentHours = now.getHours().toString().padStart(2, "0");
-  const currentMinutes = now.getMinutes().toString().padStart(2, "0");
-  const currentTimeStr = `${currentHours}:${currentMinutes}`;
 
   if (startTime <= endTime) {
     return currentTimeStr < startTime || currentTimeStr >= endTime;
@@ -162,48 +213,13 @@ export default function ClientPortal({
   onLogout,
   onClientUpdate,
 }: ClientPortalProps) {
-  // Check if we are inside an iframe / simulation context
-  const isEmbedded = typeof window !== 'undefined' && (() => {
-    try {
-      return new URLSearchParams(window.location.search).get('embedded') === 'true';
-    } catch (e) {
-      return false;
-    }
-  })();
+  const [screens, setScreens] = useState<Screen[]>([]);
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
 
-  // Retrieve parent portal state if available to prevent any layout delay or loading states in the simulator
-  const getParentPortalState = () => {
-    try {
-      if (typeof window !== "undefined" && isEmbedded && window.parent && window.parent !== window) {
-        return (window.parent as any).__vitrion_current_portal_state || null;
-      }
-    } catch (e) {
-      console.warn("Could not retrieve parent portal state:", e);
-    }
-    return null;
-  };
-
-  const parentState = getParentPortalState();
-
-  const [screens, setScreens] = useState<Screen[]>(() => {
-    return parentState?.screens || [];
-  });
-  const [assets, setAssets] = useState<Asset[]>(() => {
-    return parentState?.assets || [];
-  });
-  const [playlists, setPlaylists] = useState<Playlist[]>(() => {
-    return parentState?.playlists || [];
-  });
-
-  const [loadingScreens, setLoadingScreens] = useState(() => {
-    return parentState ? !!parentState.loadingScreens : true;
-  });
-  const [loadingAssets, setLoadingAssets] = useState(() => {
-    return parentState ? !!parentState.loadingAssets : true;
-  });
-  const [loadingPlaylists, setLoadingPlaylists] = useState(() => {
-    return parentState ? !!parentState.loadingPlaylists : true;
-  });
+  const [loadingScreens, setLoadingScreens] = useState(true);
+  const [loadingAssets, setLoadingAssets] = useState(true);
+  const [loadingPlaylists, setLoadingPlaylists] = useState(true);
 
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
@@ -259,10 +275,7 @@ export default function ClientPortal({
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  // Smart TV Simulator Modal State
-  const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
-  const [selectedSimulatorScreenId, setSelectedSimulatorScreenId] = useState<string | null>(null);
-  const [simulatorRefreshKey, setSimulatorRefreshKey] = useState(0);
+
 
   // Weekly Timing Schedule state variables
   const [expandedSchedules, setExpandedSchedules] = useState<
@@ -467,14 +480,10 @@ export default function ClientPortal({
 
       // update local storage
       if (typeof window !== "undefined") {
-        try {
-          localStorage.setItem(
-            "vitrion_logged_client",
-            JSON.stringify(updatedClient),
-          );
-        } catch (localErr) {
-          console.warn("Blocked writing updated client to localStorage:", localErr);
-        }
+        localStorage.setItem(
+          "vitrion_logged_client",
+          JSON.stringify(updatedClient),
+        );
       }
 
       // invoke prop callback if set
@@ -590,58 +599,6 @@ export default function ClientPortal({
 
     return () => unsubscribe();
   }, [client.id]);
-
-  // Synchronize state from parent ClientPortal when in embedded mode
-  useEffect(() => {
-    if (!isEmbedded || typeof window === "undefined") return;
-
-    const pullFromParent = () => {
-      try {
-        const parentWin = window.parent;
-        if (!parentWin) return;
-        const parentStateVal = (parentWin as any).__vitrion_current_portal_state;
-        if (parentStateVal) {
-          if (JSON.stringify(parentStateVal.screens) !== JSON.stringify(screens)) {
-            setScreens(parentStateVal.screens || []);
-          }
-          if (JSON.stringify(parentStateVal.assets) !== JSON.stringify(assets)) {
-            setAssets(parentStateVal.assets || []);
-          }
-          if (JSON.stringify(parentStateVal.playlists) !== JSON.stringify(playlists)) {
-            setPlaylists(parentStateVal.playlists || []);
-          }
-          if (parentStateVal.loadingScreens !== loadingScreens) {
-            setLoadingScreens(parentStateVal.loadingScreens);
-          }
-          if (parentStateVal.loadingAssets !== loadingAssets) {
-            setLoadingAssets(parentStateVal.loadingAssets);
-          }
-          if (parentStateVal.loadingPlaylists !== loadingPlaylists) {
-            setLoadingPlaylists(parentStateVal.loadingPlaylists);
-          }
-        }
-      } catch (e) {
-        console.warn("Could not sync portal data from parent window:", e);
-      }
-    };
-
-    pullFromParent();
-    const interval = setInterval(pullFromParent, 300);
-    return () => clearInterval(interval);
-  }, [isEmbedded, screens, assets, playlists, loadingScreens, loadingAssets, loadingPlaylists]);
-
-  // If we are NOT embedded (the parent window), continuously expose our portal state
-  useEffect(() => {
-    if (isEmbedded || typeof window === "undefined") return;
-    (window as any).__vitrion_current_portal_state = {
-      screens,
-      assets,
-      playlists,
-      loadingScreens,
-      loadingAssets,
-      loadingPlaylists,
-    };
-  }, [isEmbedded, screens, assets, playlists, loadingScreens, loadingAssets, loadingPlaylists]);
 
   // Copy Code Helper
   const handleCopyCode = (code: string) => {
@@ -1285,7 +1242,7 @@ export default function ClientPortal({
   };
 
   return (
-    <div id="client-portal-scroll-container" className="h-screen w-full bg-slate-900 font-sans text-slate-300 overflow-y-auto pb-16">
+    <div className="min-h-screen w-full bg-slate-900 font-sans text-slate-300 overflow-y-auto pb-16">
       {/* Active Impersonation Bar */}
       {hasActiveAdmin() && (
         <div className="bg-gradient-to-r from-amber-600 to-amber-700 text-white px-6 py-2.5 text-xs flex items-center justify-between shadow-inner select-none font-medium border-b border-amber-850">
@@ -1359,21 +1316,7 @@ export default function ClientPortal({
             </button>
           </div>
 
-          {!isEmbedded && (
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedSimulatorScreenId("portal");
-                setIsSimulatorOpen(true);
-              }}
-              className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white border border-emerald-400/30 rounded-xl text-xs font-black tracking-wide transition-all duration-300 cursor-pointer shadow-lg select-none w-full md:w-auto animate-pulse active:scale-95"
-              style={{ animationDuration: "2.5s" }}
-              title="Simular monitor interativo de computador com tela cheia e cliques ativos"
-            >
-              <Monitor className="w-4 h-4 text-white" />
-              Simular de Computador (Interativo)
-            </button>
-          )}
+
         </div>
       </div>
 
@@ -3249,163 +3192,7 @@ export default function ClientPortal({
         </footer>
       </div>
 
-      {/* Real-time Smart TV Simulator Modal Dialog */}
-      {isSimulatorOpen && (
-        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-[75] overflow-y-auto animate-fade-in text-white font-sans">
-          <div className="w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl flex flex-col p-4 md:p-6 relative my-auto">
-            {/* Modal Close */}
-            <button
-              type="button"
-              onClick={() => setIsSimulatorOpen(false)}
-              className="absolute -top-3 -right-3 p-2 bg-rose-600 hover:bg-rose-500 text-white rounded-full transition shadow-lg z-[80] cursor-pointer"
-              title="Fechar Simulador"
-            >
-              <X className="w-5 h-5 font-bold" />
-            </button>
 
-            {/* Simulated Desktop iMac/Monitor Frame */}
-            <div className="flex flex-col items-center">
-              {/* Bezel Top Camera Dot */}
-              <div className="w-full bg-[#181d28] rounded-t-2xl py-2 px-4 flex justify-between items-center border-t border-x border-slate-700/40 relative">
-                <div className="flex items-center gap-1.5 z-10">
-                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500/80 block select-none"></span>
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80 block select-none"></span>
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80 block select-none"></span>
-                </div>
-                
-                {/* Simulated Lens Cover */}
-                <div className="absolute left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-[#080a0f] border border-slate-800/80 flex items-center justify-center">
-                  <div className="w-0.5 h-0.5 rounded-full bg-blue-500/60"></div>
-                </div>
-
-                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono z-10 flex items-center gap-1.5">
-                  <Monitor className="w-4 h-4 text-emerald-400 animate-pulse" />
-                  Simulador Computador Interativo
-                </div>
-              </div>
-
-              {/* Browser Frame inside computer screen */}
-              <div className="w-full bg-[#0a0c16] border-x border-b border-slate-700/40 p-3 space-y-3 flex flex-col">
-                
-                {/* Control/Address Bar */}
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3 bg-[#111624] p-3 rounded-xl border border-slate-800/85">
-                  {/* Selector for Monitor */}
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0 select-none">
-                      Escolher Display:
-                    </span>
-                    <select
-                      value={selectedSimulatorScreenId || "portal"}
-                      onChange={(e) => {
-                        setSelectedSimulatorScreenId(e.target.value);
-                        setSimulatorRefreshKey(prev => prev + 1);
-                      }}
-                      className="bg-slate-950 border border-slate-800 text-slate-100 text-xs font-bold rounded-lg px-2.5 py-1.5 outline-none focus:border-indigo-550 transition-colors cursor-pointer"
-                    >
-                      <option value="portal">🖥️ Painel de Configurações das Telas</option>
-                      {screens.map((scr) => (
-                        <option key={scr.id} value={scr.id}>
-                          📺 Monitor Player — {scr.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Browser Address Input Box */}
-                  <div className="flex-1 flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800/85 select-all font-mono text-[11px] text-slate-400 min-w-0">
-                    <div className="flex items-center gap-1.5 text-emerald-400 shrink-0 select-none" title="Conexão Segura">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                      <span className="text-[8.5px] font-extrabold uppercase tracking-widest bg-emerald-500/10 px-1 rounded border border-emerald-500/10">HTTPS</span>
-                    </div>
-                    <span className="text-slate-600 select-none shrink-0">//</span>
-                    <span className="truncate flex-1 font-medium select-all text-indigo-300">
-                      {selectedSimulatorScreenId === "portal"
-                        ? `${window.location.host}/?embedded=true&clientId=${client.id}`
-                        : `${window.location.host}/?mode=player&screenId=${selectedSimulatorScreenId}`
-                      }
-                    </span>
-                  </div>
-
-                  {/* Browser Window Action Buttons */}
-                  <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
-                    <button
-                      type="button"
-                      onClick={() => setSimulatorRefreshKey(prev => prev + 1)}
-                      className="p-2 bg-slate-900 border border-slate-800 hover:bg-slate-800 hover:border-slate-705 text-slate-300 hover:text-white rounded-lg transition-all cursor-pointer flex items-center justify-center shadow"
-                      title="Recarregar tela do simulador"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                    </button>
-                    
-                    {selectedSimulatorScreenId && (
-                      <a
-                        href={selectedSimulatorScreenId === "portal"
-                          ? `${window.location.origin}${window.location.pathname}?embedded=true&clientId=${client.id}`
-                          : `${window.location.origin}${window.location.pathname}?mode=player&screenId=${selectedSimulatorScreenId}`
-                        }
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-2 bg-slate-900 border border-slate-800 hover:bg-indigo-650 hover:border-indigo-500 text-slate-300 hover:text-white rounded-lg transition-all flex items-center justify-center shadow cursor-pointer"
-                        title={selectedSimulatorScreenId === "portal" ? "Abrir Painel em nova guia" : "Abrir Player em nova guia independente"}
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-                {/* Sub title / info bar */}
-                <div className="flex items-center justify-between text-[10px] text-slate-400 select-none px-1">
-                  <p className="flex items-center gap-2 leading-none">
-                    <span className="text-emerald-500 font-bold font-mono">●</span> 
-                    {selectedSimulatorScreenId === "portal" 
-                      ? "Simulação Interativa — Gerencie suas telas e faça alterações em tempo real no simulador"
-                      : "Simulação Interativa — Clique em qualquer parte da tela para controlar a TV virtual"
-                    }
-                  </p>
-                  <p className="hidden md:block font-mono bg-slate-900/80 text-slate-500 px-2.5 py-0.5 rounded text-[8.5px] border border-white/2">
-                    relação: 16:9 widescreen
-                  </p>
-                </div>
-
-                {/* Simulated Viewer Viewport Frame container */}
-                <div className="w-full aspect-video rounded-xl bg-black border border-slate-800/90 relative shadow-inner overflow-hidden flex flex-col select-none">
-                  {selectedSimulatorScreenId === "portal" ? (
-                    <iframe
-                      key={`portal-${simulatorRefreshKey}`}
-                      src={`${window.location.origin}${window.location.pathname}?embedded=true&clientId=${client.id}`}
-                      className="w-full h-full border-0 absolute inset-0 bg-[#0a0c16]"
-                      title="Computer Display Screen Simulator"
-                    />
-                  ) : selectedSimulatorScreenId ? (
-                    <iframe
-                      key={`${selectedSimulatorScreenId}-${simulatorRefreshKey}`}
-                      src={`${window.location.origin}${window.location.pathname}?mode=player&screenId=${selectedSimulatorScreenId}`}
-                      className="w-full h-full border-0 absolute inset-0 bg-[#0a0c16]"
-                      title="Computer Display Screen Simulator"
-                    />
-                  ) : (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center space-y-3 bg-[#05060b]">
-                      <Tv className="w-12 h-12 text-slate-600 animate-bounce" />
-                      <div>
-                        <h4 className="text-sm font-bold text-slate-300">Nenhum display ativado para simular</h4>
-                        <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1 leading-relaxed">
-                          Adicione um monitor ou Smart TV primeiro no portal para carregar a simulação clicável do computador.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Stylish iMac Base Stand design */}
-              <div className="w-24 h-12 bg-gradient-to-b from-[#181d28] to-[#0f1118] border-x border-b border-slate-700/30 rounded-b-lg shadow-lg relative flex items-center justify-center">
-                <div className="w-16 h-1.5 bg-[#0a0c16] rounded-full opacity-60 mb-2"></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
       {/* Edit Client Profile Modal Dialog */}
       {isEditClientOpen && (
         <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-[60] overflow-y-auto animate-fade-in text-white font-sans">
@@ -3639,9 +3426,6 @@ export default function ClientPortal({
           </div>
         </div>
       )}
-
-      {/* Persistent Virtual Scrollpad for Amazon Silk & TVs */}
-      <TVScrollbarController targetId="client-portal-scroll-container" />
     </div>
   );
 }

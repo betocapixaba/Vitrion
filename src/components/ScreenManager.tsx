@@ -50,11 +50,68 @@ import {
   GripVertical,
 } from "lucide-react";
 
+function getBrasiliaTimeParts(): { dayIndex: number; timeStr: string } {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Sao_Paulo',
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    const parts = formatter.formatToParts(new Date());
+    let weekday = 'Sun';
+    let hour = '12';
+    let minute = '00';
+    for (const part of parts) {
+      if (part.type === 'weekday') weekday = part.value;
+      else if (part.type === 'hour') hour = part.value;
+      else if (part.type === 'minute') minute = part.value;
+    }
+    
+    if (hour === '24') hour = '00';
+    
+    const daysKeysMap: Record<string, number> = {
+      'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6,
+      'dom': 0, 'seg': 1, 'ter': 2, 'qua': 3, 'qui': 4, 'sex': 5, 'sáb': 6
+    };
+    
+    let dayIndex = daysKeysMap[weekday];
+    if (dayIndex === undefined) {
+      const lower = weekday.toLowerCase();
+      if (lower.includes('su') || lower.includes('do')) dayIndex = 0;
+      else if (lower.includes('mo') || lower.includes('se')) dayIndex = 1;
+      else if (lower.includes('tu') || lower.includes('te')) dayIndex = 2;
+      else if (lower.includes('we') || lower.includes('qa') || lower.includes('qu')) dayIndex = 3;
+      else if (lower.includes('th') || lower.includes('qi') || lower.includes('qu')) dayIndex = 4;
+      else if (lower.includes('fr') || lower.includes('se')) {
+        if (lower.includes('sex')) dayIndex = 5;
+        else dayIndex = 1;
+      }
+      else if (lower.includes('sa')) dayIndex = 6;
+      else dayIndex = new Date().getDay();
+    }
+    
+    return {
+      dayIndex,
+      timeStr: `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`
+    };
+  } catch (e) {
+    console.warn("Intl timezone formatting error:", e);
+    const now = new Date();
+    const h = now.getHours().toString().padStart(2, '0');
+    const m = now.getMinutes().toString().padStart(2, '0');
+    return {
+      dayIndex: now.getDay(),
+      timeStr: `${h}:${m}`
+    };
+  }
+}
+
 function isScheduledOff(screenDoc: any): boolean {
   if (!screenDoc || !screenDoc.schedule) return false;
 
-  const now = new Date();
-  const dayIndex = now.getDay(); // 0 is Sunday, 1 is Monday, etc.
+  const { dayIndex, timeStr: currentTimeStr } = getBrasiliaTimeParts();
   const daysKeys = [
     "sunday",
     "monday",
@@ -73,11 +130,6 @@ function isScheduledOff(screenDoc: any): boolean {
 
   const { startTime, endTime } = dayConfig;
   if (!startTime || !endTime) return false;
-
-  // Convert current time to a comparable minutes format (HH:MM)
-  const currentHours = now.getHours().toString().padStart(2, "0");
-  const currentMinutes = now.getMinutes().toString().padStart(2, "0");
-  const currentTimeStr = `${currentHours}:${currentMinutes}`;
 
   if (startTime <= endTime) {
     return currentTimeStr < startTime || currentTimeStr >= endTime;
