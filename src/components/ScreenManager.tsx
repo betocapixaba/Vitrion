@@ -53,7 +53,7 @@ import {
 function getBrasiliaTimeParts(): { dayIndex: number; timeStr: string } {
   try {
     const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/Sao_Paulo',
+      timeZone: 'America/New_York',
       weekday: 'short',
       hour: '2-digit',
       minute: '2-digit',
@@ -72,25 +72,10 @@ function getBrasiliaTimeParts(): { dayIndex: number; timeStr: string } {
     if (hour === '24') hour = '00';
     
     const daysKeysMap: Record<string, number> = {
-      'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6,
-      'dom': 0, 'seg': 1, 'ter': 2, 'qua': 3, 'qui': 4, 'sex': 5, 'sáb': 6
+      'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6
     };
     
-    let dayIndex = daysKeysMap[weekday];
-    if (dayIndex === undefined) {
-      const lower = weekday.toLowerCase();
-      if (lower.includes('su') || lower.includes('do')) dayIndex = 0;
-      else if (lower.includes('mo') || lower.includes('se')) dayIndex = 1;
-      else if (lower.includes('tu') || lower.includes('te')) dayIndex = 2;
-      else if (lower.includes('we') || lower.includes('qa') || lower.includes('qu')) dayIndex = 3;
-      else if (lower.includes('th') || lower.includes('qi') || lower.includes('qu')) dayIndex = 4;
-      else if (lower.includes('fr') || lower.includes('se')) {
-        if (lower.includes('sex')) dayIndex = 5;
-        else dayIndex = 1;
-      }
-      else if (lower.includes('sa')) dayIndex = 6;
-      else dayIndex = new Date().getDay();
-    }
+    const dayIndex = daysKeysMap[weekday] !== undefined ? daysKeysMap[weekday] : new Date().getDay();
     
     return {
       dayIndex,
