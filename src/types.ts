@@ -70,6 +70,7 @@ export interface Screen {
   createdAt: any; // Firestore Timestamp
   updatedAt: any; // Firestore Timestamp
   schedule?: WeeklySchedule;
+  deviceTime?: number; // Device local epoch time in ms
 }
 
 export interface Client {

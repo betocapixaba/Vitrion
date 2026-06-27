@@ -404,6 +404,7 @@ export default function TVPlayer() {
             ownerId: '',
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
+            deviceTime: Date.now(),
           });
           setStoredScreenId(newCode);
           setScreenId(newCode);
@@ -513,7 +514,8 @@ export default function TVPlayer() {
         await updateDoc(doc(db, 'screens', screenId), {
           status: 'online',
           lastActive: serverTimestamp(),
-          updatedAt: serverTimestamp()
+          updatedAt: serverTimestamp(),
+          deviceTime: Date.now()
         });
       } catch (err) {
         console.warn("Heartbeat error, screen may have been deleted or unlinked on control panel:", err);

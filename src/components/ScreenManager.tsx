@@ -269,6 +269,7 @@ export default function ScreenManager() {
             clientId: d.clientId || "",
             createdAt: d.createdAt,
             updatedAt: d.updatedAt,
+            deviceTime: d.deviceTime,
           });
         });
         setScreens(list);
@@ -1116,6 +1117,65 @@ export default function ScreenManager() {
     return deltaSeconds < 65;
   };
 
+  const getSyncOffsetInfo = (screen: Screen) => {
+    if (!screen.deviceTime || !screen.lastActive) {
+      return {
+        status: 'unknown',
+        text: 'Aguardando pulso...',
+        color: 'text-slate-500 bg-slate-50 border-slate-200/50',
+        offsetSeconds: 0
+      };
+    }
+
+    const seconds = (screen.lastActive as any).seconds;
+    const lastActiveMs = seconds
+      ? seconds * 1000
+      : new Date(screen.lastActive as any).getTime();
+    if (isNaN(lastActiveMs)) {
+      return {
+        status: 'unknown',
+        text: 'Aguardando pulso...',
+        color: 'text-slate-500 bg-slate-50 border-slate-200/50',
+        offsetSeconds: 0
+      };
+    }
+
+    const offsetSeconds = Math.round((screen.deviceTime - lastActiveMs) / 1000);
+    const absOffset = Math.abs(offsetSeconds);
+
+    if (absOffset < 30) {
+      return {
+        status: 'in-sync',
+        text: 'Perfeitamente Sincronizado',
+        color: 'text-emerald-700 bg-emerald-500/10 border-emerald-500/20',
+        offsetSeconds
+      };
+    } else {
+      let timeText = '';
+      if (absOffset < 3600) {
+        const minutes = Math.floor(absOffset / 60);
+        const remainingSeconds = absOffset % 60;
+        timeText = `${minutes}m ${remainingSeconds}s`;
+      } else {
+        const hours = Math.floor(absOffset / 3600);
+        const minutes = Math.floor((absOffset % 3600) / 60);
+        timeText = `${hours}h ${minutes}m`;
+      }
+
+      const direction = offsetSeconds > 0 ? 'Adiantada' : 'Atrasada';
+      const isCritical = absOffset >= 300; // >= 5 minutes is critical for schedule sync
+
+      return {
+        status: isCritical ? 'critical' : 'warning',
+        text: `Diferença: ${direction} ${timeText}`,
+        color: isCritical 
+          ? 'text-rose-700 bg-rose-500/10 border-rose-500/20 font-bold animate-pulse' 
+          : 'text-amber-700 bg-amber-500/10 border-amber-500/20 font-semibold',
+        offsetSeconds
+      };
+    }
+  };
+
   const totalScreens = screens.length;
   const onlineScreens = screens.filter(isScreenOnline).length;
   const offlineScreens = Math.max(0, totalScreens - onlineScreens);
@@ -1481,6 +1541,71 @@ export default function ScreenManager() {
                 </div>
               </div>
 
+              {/* Monitor de Sincronização de Relógio (Vitrion Sync) */}
+              {(() => {
+                const onlineScreensList = screens.filter(isScreenOnline);
+                const outOfSyncScreens = onlineScreensList.filter(s => {
+                  const syncInfo = getSyncOffsetInfo(s);
+                  return syncInfo.status === 'critical' || syncInfo.status === 'warning';
+                });
+
+                return (
+                  <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 text-white space-y-3 shadow-sm animate-fade-in">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-lg">
+                          <Clock className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                            Monitor de Sincronização de Relógio (Vitrion Sync)
+                          </h4>
+                          <p className="text-[10px] text-slate-400 leading-none mt-1">
+                            Garante que os aparelhos executem o Programador Semanal no horário correto
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[10px] font-mono bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded-full font-bold">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        ONLINE SYNC ACTIVE
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-1">
+                      <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80 flex flex-col justify-between">
+                        <span className="text-[10px] text-slate-450 uppercase tracking-wider font-bold">Aparelhos Ativos</span>
+                        <span className="text-lg font-mono font-bold mt-1 text-slate-100">{onlineScreensList.length}</span>
+                      </div>
+                      <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80 flex flex-col justify-between">
+                        <span className="text-[10px] text-slate-450 uppercase tracking-wider font-bold">100% Sincronizados</span>
+                        <span className="text-lg font-mono font-bold mt-1 text-emerald-400">
+                          {onlineScreensList.length - outOfSyncScreens.length}
+                        </span>
+                      </div>
+                      <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/80 flex flex-col justify-between">
+                        <span className="text-[10px] text-slate-450 uppercase tracking-wider font-bold">Divergência de Hora</span>
+                        <span className={`text-lg font-mono font-bold mt-1 ${outOfSyncScreens.length > 0 ? 'text-amber-400 animate-pulse' : 'text-slate-500'}`}>
+                          {outOfSyncScreens.length}
+                        </span>
+                      </div>
+                    </div>
+
+                    {outOfSyncScreens.length > 0 && (
+                      <div className="bg-amber-500/10 border border-amber-500/15 rounded-lg p-2.5 text-[11px] text-amber-300 leading-normal flex items-start gap-2.5 animate-fade-in mt-1">
+                        <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5 animate-pulse" />
+                        <div>
+                          <span className="font-bold uppercase tracking-wide block mb-0.5">Desvio de Sincronização Detectado</span>
+                          <p>Há {outOfSyncScreens.length} dispositivo(s) online cuja hora interna está divergindo do servidor Vitrion. Isto fará com que o Programador Semanal (Modo Econômico) ative ou desative fora do horário correto configurado.</p>
+                          <span className="block mt-1.5 font-bold text-slate-300">
+                            👉 Dica: Ajuste o fuso horário (America/New_York) e ative a sincronização automática de data/hora nas configurações do sistema do seu Amazon Fire TV.
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {isLoading ? (
                 <div className="flex flex-col items-center justify-center py-12 gap-2 text-slate-400">
                   <svg
@@ -1608,6 +1733,24 @@ export default function ScreenManager() {
                                 {screen.contentType === "playlist" &&
                                   `Playlist: ${playlists.find((a) => a.id === screen.contentId)?.name || "Carregando..."}`}
                               </span>
+                            </div>
+                          </div>
+
+                          {/* Column 3.5: Clock Sincronização status badge */}
+                          <div className="flex items-center gap-1.5 min-w-0 md:w-52 shrink-0">
+                            <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <div className="min-w-0">
+                              <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider leading-none">
+                                Sincronização de Relógio
+                              </span>
+                              {(() => {
+                                const syncInfo = getSyncOffsetInfo(screen);
+                                return (
+                                  <span className={`text-[10px] px-2 py-0.5 rounded-md inline-block border mt-0.5 font-mono ${syncInfo.color}`}>
+                                    {syncInfo.text}
+                                  </span>
+                                );
+                              })()}
                             </div>
                           </div>
 
