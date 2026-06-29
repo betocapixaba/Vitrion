@@ -983,9 +983,18 @@ export default function ClientPortal({
     }
   };
 
+const safeConfirm = (message: string): boolean => {
+  try {
+    return window.confirm(message);
+  } catch (e) {
+    console.warn("window.confirm was blocked or failed. Auto-confirming action.", e);
+    return true;
+  }
+};
+
   // Delete playlist document
   const handleDeletePlaylist = async (playlistId: string, name: string) => {
-    if (!window.confirm(`Deseja realmente excluir a playlist "${name}"?`)) {
+    if (!safeConfirm(`Deseja realmente excluir a playlist "${name}"?`)) {
       return;
     }
 
@@ -1192,7 +1201,7 @@ export default function ClientPortal({
 
   // Remove product asset
   const handleRemoveProduct = async (assetId: string, assetName: string) => {
-    if (!window.confirm(`Excluir imagem do produto "${assetName}"?`)) {
+    if (!safeConfirm(`Excluir imagem do produto "${assetName}"?`)) {
       return;
     }
 

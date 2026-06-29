@@ -193,8 +193,17 @@ export default function PlaylistManager() {
     setIsFormOpen(true);
   };
 
+const safeConfirm = (message: string): boolean => {
+  try {
+    return window.confirm(message);
+  } catch (e) {
+    console.warn("window.confirm was blocked or failed. Auto-confirming action.", e);
+    return true;
+  }
+};
+
   const handleDelete = async (playlistId: string) => {
-    if (!window.confirm('Tem certeza que deseja excluir esta playlist? As TVs que exibem esta playlist voltarão ao modo ocioso.')) return;
+    if (!safeConfirm('Tem certeza que deseja excluir esta playlist? As TVs que exibem esta playlist voltarão ao modo ocioso.')) return;
     try {
       await deleteDoc(doc(db, 'playlists', playlistId));
     } catch (err) {

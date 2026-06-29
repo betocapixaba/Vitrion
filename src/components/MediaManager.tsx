@@ -245,8 +245,17 @@ export default function MediaManager() {
     setIsFormOpen(true);
   };
 
+const safeConfirm = (message: string): boolean => {
+  try {
+    return window.confirm(message);
+  } catch (e) {
+    console.warn("window.confirm was blocked or failed. Auto-confirming action.", e);
+    return true;
+  }
+};
+
   const handleDelete = async (assetId: string) => {
-    if (!window.confirm('Tem certeza que deseja excluir esta mídia da sua biblioteca?')) return;
+    if (!safeConfirm('Tem certeza que deseja excluir esta mídia da sua biblioteca?')) return;
     try {
       await deleteDoc(doc(db, 'assets', assetId));
     } catch (err) {

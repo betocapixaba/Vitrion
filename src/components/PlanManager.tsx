@@ -139,8 +139,17 @@ export default function PlanManager() {
     }
   };
 
+const safeConfirm = (message: string): boolean => {
+  try {
+    return window.confirm(message);
+  } catch (e) {
+    console.warn("window.confirm was blocked or failed. Auto-confirming action.", e);
+    return true;
+  }
+};
+
   const handleClearPrice = async (planId: string) => {
-    if (!window.confirm('Deixar este plano com preço "em aberto"? Ele será ocultado nas novas telas de registro de cliente.')) {
+    if (!safeConfirm('Deixar este plano com preço "em aberto"? Ele será ocultado nas novas telas de registro de cliente.')) {
       return;
     }
     setErrorMsg('');

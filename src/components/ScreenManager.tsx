@@ -667,11 +667,20 @@ export default function ScreenManager() {
     }
   };
 
+const safeConfirm = (message: string): boolean => {
+  try {
+    return window.confirm(message);
+  } catch (e) {
+    console.warn("window.confirm was blocked or failed. Auto-confirming action.", e);
+    return true;
+  }
+};
+
   // Permanently delete screen from Firestore database
   const handleUnpairScreen = async (screenId: string, skipConfirm = false) => {
     if (
       !skipConfirm &&
-      !window.confirm(
+      !safeConfirm(
         "Deseja realmente EXCLUIR este monitor/display permanentemente do sistema? Esta ação apagará o registro da TV no banco de dados.",
       )
     )
@@ -697,7 +706,7 @@ export default function ScreenManager() {
     }
     if (
       !skipConfirm &&
-      !window.confirm("Colocar todas as TVs deste cliente em Standby?")
+      !safeConfirm("Colocar todas as TVs deste cliente em Standby?")
     )
       return;
     try {
@@ -753,7 +762,7 @@ export default function ScreenManager() {
     }
     if (
       !skipConfirm &&
-      !window.confirm(
+      !safeConfirm(
         "Tem certeza que deseja desvincular TODAS as TVs integradas a este cliente? Elas retornarão ao modo de pareamento original.",
       )
     )

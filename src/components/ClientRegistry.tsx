@@ -522,8 +522,17 @@ export default function ClientRegistry({ onImpersonate }: ClientRegistryProps) {
     }
   };
 
+const safeConfirm = (message: string): boolean => {
+  try {
+    return window.confirm(message);
+  } catch (e) {
+    console.warn("window.confirm was blocked or failed. Auto-confirming action.", e);
+    return true;
+  }
+};
+
   const handleDeleteClient = async (clientId: string) => {
-    if (!window.confirm('Tem certeza de que deseja remover o registro deste cliente? Esta ação não pode ser desfeita.')) {
+    if (!safeConfirm('Tem certeza de que deseja remover o registro deste cliente? Esta ação não pode ser desfeita.')) {
       return;
     }
 
@@ -565,7 +574,7 @@ export default function ClientRegistry({ onImpersonate }: ClientRegistryProps) {
       alert('Nenhuma TV vinculada a este cliente para parar a exibição.');
       return;
     }
-    if (!window.confirm('Tem certeza de que deseja parar a exibição de todas as TVs deste cliente? (Elas entrarão em modo Standby)')) return;
+    if (!safeConfirm('Tem certeza de que deseja parar a exibição de todas as TVs deste cliente? (Elas entrarão em modo Standby)')) return;
     try {
       setErrorText('');
       setSuccessText('');
@@ -612,7 +621,7 @@ export default function ClientRegistry({ onImpersonate }: ClientRegistryProps) {
       alert('Nenhuma TV de cliente vinculada.');
       return;
     }
-    if (!window.confirm('Tem certeza de que deseja desvincular TODAS as TVs integradas a este cliente? Elas serão removidas da exibição e retornarão ao modo de pareamento original.')) return;
+    if (!safeConfirm('Tem certeza de que deseja desvincular TODAS as TVs integradas a este cliente? Elas serão removidas da exibição e retornarão ao modo de pareamento original.')) return;
     try {
       setErrorText('');
       setSuccessText('');

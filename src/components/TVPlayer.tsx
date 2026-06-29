@@ -13,6 +13,9 @@ import { motion, AnimatePresence } from 'motion/react';
 // @ts-ignore
 import vitrionLogoOficial from '../assets/images/vitrion_logo_oficial.png';
 
+// A base64 encoded silent 1-pixel video clip (MP4) to act as a browser-level wake lock (NoSleep.js equivalent)
+const SILENT_VIDEO_BASE64 = "data:video/mp4;base64,AAAAHGZ0eXBtcDQyAAAAAG1wNDJpc29tYXZjMQAAAzZtb292AAAAbG12aGQAAAAA0m6h0dJuodQAABgQAAAB9AABAAABAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAACNXRyYWsAAABcdGtoZAAAAAPSbqHR0m6h0QAAAAEAAAAAAAAB9AAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAEAbWRpYQAAACBtZGhkAAAAA0m6h0dJuodQAAAOEAAAAcQAVcQAAAAAACFoZGxyAAAAAAAAAAB2aWRlAAAAAAAAAAAAAAAAVmlkZW9IYW5kbGVyAAAAAYxtZGluZgAAABxtbmhkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlZGluZgAAABxkZWZ0AAAAAAAAAA11cmwgAAAAAQAAAXBzdGJsAAAAp3N0c2QAAAAAAAAAAQAAAJZzdgZjMQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAQABAAEsAAAAAEAAUAcGgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABgAAf8AcGFzcAAAAAEAAAABAAAAFmNvbHJuY2xjAAAAAQAAAAEAAAABAAAAbmF2Y2MAAAAAYmF2Y2MBAQAL/0AALgEAAgA0AADgQAAA4QAAAOMAAKABAAAAAQAHZ2VvYgAAAAEAAAAAYXN0YwAAAAEAAAAAc3R0cwAAAAAAAAABAAAAAQAAAcQAAAAAc3RzeQAAAAAAAAABAAAAAQAAABxzdHNjAAAAAAAAAAEAAAABAAAAAQAAAAEAAAAUc3RzeiAAAAAAAAAcAAAAAQAAABRzdGNvAAAAAAAAAAEAAAAcAAAAYnVkZGEAAABadWR0YQAAAFJtZXRhAAAAAAAAACFoZGxyAAAAAAAAAABtZGlyAAAAAAAAAAAAAAAAAAAAAAAAYWlyZf8AAACVbW9vZgAAAChtZmhkAAAAAAAAdLIAAAAAbW9vZgAAAChtZmhkAAAAAAAAdLIAAAAAAAAAYnRyYWYAAAAIZGNobgAAAAAAKXRmYWQAAAAgYnRyYWYAAAAZZmxhZwAAAAAAdHJhbgAAAAAAdHJhZgAAAAAAbXVkYQAAAEptZGF0AAACV2gAAAAIZmxhZwAAAAAAdHJhbgAAAAAAdHJhZgAAAAAAbXVkYQAAAEptZGF0AAACV2gAAA==";
+
 // Generates a random uppercase pairing code (4 characters)
 function generatePairingCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No confusing chars like I, O, 0, 1
@@ -206,26 +209,44 @@ function getBrasiliaTimeParts(): { dayIndex: number; timeStr: string } {
 }
 
 function isScheduledOff(screenDoc: any): boolean {
-  if (!screenDoc || !screenDoc.schedule) return false;
-  
   const { dayIndex, timeStr: currentTimeStr } = getBrasiliaTimeParts();
-  const daysKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  const dayKey = daysKeys[dayIndex];
-  
-  const dayConfig = screenDoc.schedule[dayKey];
-  if (!dayConfig || !dayConfig.enabled) {
-    return false; // If disabled or not set for this day, don't show black screen
+
+  // 1. If screenDoc has a custom schedule configured in Firestore, respect it
+  if (screenDoc && screenDoc.schedule) {
+    const daysKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const dayKey = daysKeys[dayIndex];
+    const dayConfig = screenDoc.schedule[dayKey];
+    if (dayConfig && dayConfig.enabled) {
+      const { startTime, endTime } = dayConfig;
+      if (startTime && endTime) {
+        if (startTime <= endTime) {
+          return currentTimeStr < startTime || currentTimeStr >= endTime;
+        } else {
+          return currentTimeStr >= endTime && currentTimeStr < startTime;
+        }
+      }
+    }
   }
-  
-  const { startTime, endTime } = dayConfig;
-  if (!startTime || !endTime) return false;
-  
-  if (startTime <= endTime) {
-    return currentTimeStr < startTime || currentTimeStr >= endTime;
-  } else {
-    // Overnight schedule
-    return currentTimeStr >= endTime && currentTimeStr < startTime;
+
+  // 2. Default hardcoded fallback schedule as requested in Bloco 3:
+  // • Segunda a sexta (1 to 5) -> ativo 07h00 às 22h00
+  // • Sábado (6) -> ativo 08h00 às 20h00
+  // • Domingo (0) -> ativo 09h00 às 18h00
+  let activeStart = "07:00";
+  let activeEnd = "22:00";
+
+  if (dayIndex === 0) { // Domingo
+    activeStart = "09:00";
+    activeEnd = "18:00";
+  } else if (dayIndex === 6) { // Sábado
+    activeStart = "08:00";
+    activeEnd = "20:00";
+  } else { // Segunda a Sexta (ou Segunda a Quinta se configurado na TV)
+    activeStart = "07:00";
+    activeEnd = "22:00";
   }
+
+  return currentTimeStr < activeStart || currentTimeStr >= activeEnd;
 }
 
 export default function TVPlayer() {
@@ -336,6 +357,53 @@ export default function TVPlayer() {
       window.removeEventListener('mousemove', handleKeepAliveInteraction);
       window.removeEventListener('keydown', handleKeepAliveInteraction);
       releaseWakeLock();
+    };
+  }, []);
+
+  // Watchdog timer ref and state
+  const watchdogTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const resetWatchdog = () => {
+    if (watchdogTimerRef.current) {
+      clearTimeout(watchdogTimerRef.current);
+    }
+    // Set 5-minute watchdog timer
+    watchdogTimerRef.current = setTimeout(() => {
+      console.warn("Watchdog trigger: No activity or content update detected for 5 minutes. Reloading Vercel app to prevent frozen screen...");
+      window.location.reload();
+    }, 5 * 60 * 1000);
+  };
+
+  // Reset watchdog on key player updates (screen state, active asset, playlist transition)
+  useEffect(() => {
+    resetWatchdog();
+    return () => {
+      if (watchdogTimerRef.current) clearTimeout(watchdogTimerRef.current);
+    };
+  }, [screenDoc, activeAsset, playlistIndex, isOffBySchedule]);
+
+  // Monitor network connection and reload automatically on recovery
+  useEffect(() => {
+    let wasOffline = !navigator.onLine;
+
+    const handleOnline = () => {
+      if (wasOffline) {
+        console.log("Internet reconnected! Reloading page to resume player smoothly...");
+        window.location.reload();
+      }
+    };
+
+    const handleOffline = () => {
+      wasOffline = true;
+      console.warn("Internet disconnected!");
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
     };
   }, []);
 
@@ -782,6 +850,15 @@ export default function TVPlayer() {
 
     return (
       <div ref={containerRef} className="min-h-screen w-full bg-slate-950 flex flex-col justify-between p-6 sm:p-8 text-white relative overflow-hidden font-sans select-none">
+        <video
+          src={SILENT_VIDEO_BASE64}
+          loop
+          muted
+          playsInline
+          autoPlay
+          className="hidden pointer-events-none w-1 h-1 absolute opacity-0"
+          style={{ width: '1px', height: '1px' }}
+        />
         
         {/* Ambient brand logo background */}
         <div className="absolute inset-0 z-0 flex items-center justify-center p-12">
@@ -981,6 +1058,15 @@ export default function TVPlayer() {
       ref={containerRef} 
       className="min-h-screen w-full bg-black flex flex-col justify-between text-white relative overflow-hidden font-sans select-none"
     >
+      <video
+        src={SILENT_VIDEO_BASE64}
+        loop
+        muted
+        playsInline
+        autoPlay
+        className="hidden pointer-events-none w-1 h-1 absolute opacity-0"
+        style={{ width: '1px', height: '1px' }}
+      />
       {isOffBySchedule && (
         <div 
           className="absolute inset-0 bg-black z-50 animate-fade-in" 
